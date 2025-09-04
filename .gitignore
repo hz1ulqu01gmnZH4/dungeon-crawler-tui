@@ -1,0 +1,33 @@
+# Build artifacts
+/target/
+/build/
+*.o
+*.so
+*.dll
+*.exe
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation spoilers - contains complete story revelations
+docs/SPOILER.md
+
+# TeX build files
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Generated images
+docs/tex/generated_images/
