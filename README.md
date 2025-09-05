@@ -89,4 +89,4 @@ cargo fmt
 
 ## License
 
-MIT
+WTFPL
