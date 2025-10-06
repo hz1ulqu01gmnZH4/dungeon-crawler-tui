@@ -1,0 +1,82 @@
+use crate::map::MapSet;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RunMode {
+    AwaitingInput,
+    PlayerTurn,
+    MonstersTurn,
+    GameOver,
+}
+
+pub struct Camera {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+impl Camera {
+    pub fn new(width: i32, height: i32) -> Self {
+        Self {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        }
+    }
+
+    pub fn center_on(&mut self, x: i32, y: i32) {
+        self.x = x - self.width / 2;
+        self.y = y - self.height / 2;
+    }
+}
+
+pub struct GameLog {
+    pub messages: Vec<String>,
+    pub max_size: usize,
+}
+
+impl GameLog {
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            messages: Vec::new(),
+            max_size,
+        }
+    }
+
+    pub fn add<S: Into<String>>(&mut self, message: S) {
+        self.messages.push(message.into());
+        if self.messages.len() > self.max_size {
+            self.messages.remove(0);
+        }
+    }
+
+    pub fn recent(&self, count: usize) -> &[String] {
+        let start = self.messages.len().saturating_sub(count);
+        &self.messages[start..]
+    }
+}
+
+pub struct Resources {
+    pub maps: MapSet,
+    pub camera: Camera,
+    pub rng: StdRng,
+    pub mode: RunMode,
+    pub log: GameLog,
+    pub player_entity: Option<hecs::Entity>,
+}
+
+impl Resources {
+    pub fn new(map_width: i32, map_height: i32, seed: u64) -> Self {
+        Self {
+            maps: MapSet::new(map_width, map_height),
+            camera: Camera::new(80, 24),
+            rng: StdRng::seed_from_u64(seed),
+            mode: RunMode::AwaitingInput,
+            log: GameLog::new(100),
+            player_entity: None,
+        }
+    }
+}

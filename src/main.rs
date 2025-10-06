@@ -1,166 +1,113 @@
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyCode},
+    execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand,
 };
-use ratatui::{
-    backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Style},
-    widgets::{Block, Borders, Paragraph},
-    Terminal,
+use dungeon_clawler_tui::{
+    ecs::*,
+    game::App,
+    map::generate_dungeon,
 };
+use hecs::World;
+use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum GameState {
-    MainMenu,
-    Playing,
-    Paused,
-    GameOver,
-}
-
-#[derive(Debug)]
-enum GameInput {
-    Move(MoveDirection),
-    Quit,
-    Pause,
-    Resume,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum MoveDirection {
-    North,
-    South,
-    East,
-    West,
-}
-
-struct Game {
-    state: GameState,
-    player_pos: (u16, u16),
-}
-
-impl Game {
-    fn new() -> Self {
-        Self {
-            state: GameState::MainMenu,
-            player_pos: (10, 10),
-        }
-    }
-
-    fn handle_input(&mut self, input: GameInput) {
-        match (&self.state, input) {
-            (GameState::MainMenu, GameInput::Quit) => self.state = GameState::GameOver,
-            (GameState::MainMenu, _) => self.state = GameState::Playing,
-            (GameState::Playing, GameInput::Move(dir)) => self.move_player(dir),
-            (GameState::Playing, GameInput::Pause) => self.state = GameState::Paused,
-            (GameState::Playing, GameInput::Quit) => self.state = GameState::GameOver,
-            (GameState::Paused, GameInput::Resume) => self.state = GameState::Playing,
-            (GameState::Paused, GameInput::Quit) => self.state = GameState::GameOver,
-            _ => {}
-        }
-    }
-
-    fn move_player(&mut self, direction: MoveDirection) {
-        match direction {
-            MoveDirection::North if self.player_pos.1 > 0 => self.player_pos.1 -= 1,
-            MoveDirection::South if self.player_pos.1 < 20 => self.player_pos.1 += 1,
-            MoveDirection::West if self.player_pos.0 > 0 => self.player_pos.0 -= 1,
-            MoveDirection::East if self.player_pos.0 < 40 => self.player_pos.0 += 1,
-            _ => {}
-        }
-    }
-}
-
 fn main() -> Result<()> {
+    // Terminal setup
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    stdout.execute(EnterAlternateScreen)?;
-    
+    execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    
-    let mut game = Game::new();
-    
-    let result = run_game_loop(&mut terminal, &mut game);
-    
-    disable_raw_mode()?;
-    terminal.backend_mut().execute(LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-    
-    result
-}
 
-fn run_game_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, game: &mut Game) -> Result<()> {
-    loop {
-        terminal.draw(|f| {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(3),
-                    Constraint::Length(3),
-                ])
-                .split(f.area());
-            
-            let game_area = Block::default()
-                .title("Dungeon Clawler")
-                .borders(Borders::ALL);
-            
-            let content = match game.state {
-                GameState::MainMenu => "Press any key to start, 'q' to quit".to_string(),
-                GameState::Playing => {
-                    let mut display = vec![vec!['.'; 41]; 21];
-                    display[game.player_pos.1 as usize][game.player_pos.0 as usize] = '@';
-                    display.iter()
-                        .map(|row| row.iter().collect::<String>())
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                }
-                GameState::Paused => "PAUSED - Press 'p' to resume, 'q' to quit".to_string(),
-                GameState::GameOver => "Game Over! Thanks for playing.".to_string(),
-            };
-            
-            let game_widget = Paragraph::new(content)
-                .block(game_area)
-                .style(Style::default().fg(Color::White));
-            
-            f.render_widget(game_widget, chunks[0]);
-            
-            let status = Paragraph::new(format!("State: {:?} | Position: {:?}", game.state, game.player_pos))
-                .block(Block::default().borders(Borders::ALL))
-                .style(Style::default().fg(Color::Yellow));
-            
-            f.render_widget(status, chunks[1]);
-        })?;
-        
-        if game.state == GameState::GameOver {
-            break;
-        }
-        
-        if let Some(input) = handle_input()? {
-            game.handle_input(input);
-        }
+    // Run game
+    let result = run_game(&mut terminal);
+
+    // Terminal cleanup
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+
+    if let Err(e) = result {
+        eprintln!("Error: {:?}", e);
     }
-    
+
     Ok(())
 }
 
-fn handle_input() -> Result<Option<GameInput>> {
-    if event::poll(std::time::Duration::from_millis(100))? {
-        if let Event::Key(key) = event::read()? {
-            return Ok(Some(match key.code {
-                KeyCode::Char('q') => GameInput::Quit,
-                KeyCode::Char('p') => GameInput::Pause,
-                KeyCode::Char('r') => GameInput::Resume,
-                KeyCode::Char('h') | KeyCode::Left => GameInput::Move(MoveDirection::West),
-                KeyCode::Char('j') | KeyCode::Down => GameInput::Move(MoveDirection::South),
-                KeyCode::Char('k') | KeyCode::Up => GameInput::Move(MoveDirection::North),
-                KeyCode::Char('l') | KeyCode::Right => GameInput::Move(MoveDirection::East),
-                _ => return Ok(None),
-            }));
+fn run_game<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> Result<()> {
+    let (world, resources) = create_game_world();
+    let mut app = App::new(world, resources);
+    app.run(terminal)
+}
+
+fn create_game_world() -> (World, Resources) {
+    let mut world = World::new();
+    let mut resources = Resources::new(80, 50, 12345);
+
+    // Generate dungeon
+    let rooms = generate_dungeon(
+        resources.maps.active_map_mut(),
+        &mut resources.rng,
+        30,  // max_rooms
+        5,   // min_size
+        10,  // max_size
+    );
+
+    // Spawn player in first room
+    if let Some(first_room) = rooms.first() {
+        let (px, py) = first_room.center();
+        let player = world.spawn((
+            Position::new(px, py, RealityLayer::Normal),
+            Renderable {
+                glyph: '@',
+                fg: ratatui::style::Color::Yellow,
+                bg: ratatui::style::Color::Reset,
+                z: 10,
+            },
+            Player,
+            Name("Player".to_string()),
+            CombatStats::new(30, 5, 2),
+            TriMeter::new(),
+            Viewshed::new(8),
+            BlocksMovement,
+        ));
+
+        resources.player_entity = Some(player);
+        resources.camera.center_on(px, py);
+        resources.log.add("Welcome to the Dungeon Clawler!");
+        resources.log.add("Use hjkl or arrow keys to move. Press 'q' to quit.");
+    }
+
+    // Spawn monsters in other rooms
+    for room in rooms.iter().skip(1) {
+        let (mx, my) = room.center();
+
+        // 50% chance to spawn a monster
+        if rand::random::<bool>() {
+            let monster_type: i32 = rand::random::<i32>() % 3;
+            let (glyph, name, hp, power, defense) = match monster_type {
+                0 => ('g', "Goblin", 8, 3, 1),
+                1 => ('o', "Orc", 12, 4, 1),
+                _ => ('t', "Troll", 16, 5, 2),
+            };
+
+            world.spawn((
+                Position::new(mx, my, RealityLayer::Normal),
+                Renderable {
+                    glyph,
+                    fg: ratatui::style::Color::Red,
+                    bg: ratatui::style::Color::Reset,
+                    z: 5,
+                },
+                Monster,
+                Name(name.to_string()),
+                CombatStats::new(hp, power, defense),
+                Viewshed::new(6),
+                BlocksMovement,
+            ));
         }
     }
-    Ok(None)
+
+    (world, resources)
 }

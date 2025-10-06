@@ -1,23 +1,12 @@
-pub mod game {
-    pub mod state;
-    pub mod world;
-}
+pub mod ecs;
+pub mod game;
+pub mod map;
+pub mod systems;
+pub mod ui;
 
-pub mod components {
-    pub mod position;
-    pub mod stats;
-}
-
-pub mod systems {
-    pub mod movement;
-    pub mod combat;
-}
-
-pub mod ui {
-    pub mod renderer;
-    pub mod input;
-}
-
-pub mod generation {
-    pub mod dungeon;
-}
+// Re-export commonly used items
+pub use ecs::*;
+pub use game::*;
+pub use map::*;
+pub use systems::*;
+pub use ui::*;
