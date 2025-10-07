@@ -20,6 +20,9 @@ Thumbs.db
 # Documentation spoilers - contains complete story revelations
 docs/SPOILER.md
 
+# Research documentation - CDDA analysis (reference material)
+docs/research/
+
 # TeX build files
 *.aux
 *.log
