@@ -1,6 +1,7 @@
 pub mod ecs;
 pub mod game;
 pub mod map;
+pub mod world;
 pub mod systems;
 pub mod ui;
 

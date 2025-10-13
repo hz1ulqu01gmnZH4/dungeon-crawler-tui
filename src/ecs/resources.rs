@@ -1,4 +1,5 @@
 use crate::map::MapSet;
+use crate::world::Overmap;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -61,22 +62,32 @@ impl GameLog {
 
 pub struct Resources {
     pub maps: MapSet,
+    pub overmap: Overmap,
     pub camera: Camera,
     pub rng: StdRng,
     pub mode: RunMode,
     pub log: GameLog,
     pub player_entity: Option<hecs::Entity>,
+    pub player_overmap_pos: (i32, i32),  // Player position on overmap
+    pub in_overmap_mode: bool,            // True when viewing/navigating overmap
 }
 
 impl Resources {
     pub fn new(map_width: i32, map_height: i32, seed: u64) -> Self {
+        // Start player at center of a 50x50 overmap (MVP size)
+        let overmap_size = 50;
+        let start_pos = (overmap_size / 2, overmap_size / 2);
+
         Self {
             maps: MapSet::new(map_width, map_height),
+            overmap: Overmap::new(overmap_size, overmap_size, seed),
             camera: Camera::new(80, 24),
             rng: StdRng::seed_from_u64(seed),
             mode: RunMode::AwaitingInput,
             log: GameLog::new(100),
             player_entity: None,
+            player_overmap_pos: start_pos,
+            in_overmap_mode: false,
         }
     }
 }
