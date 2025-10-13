@@ -1,12 +1,13 @@
 use ratatui::style::Color;
+use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RealityLayer {
     Normal,
     Cosmic,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Position {
     pub x: i32,
     pub y: i32,
@@ -19,10 +20,36 @@ impl Position {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[serde(remote = "Color")]
+enum ColorDef {
+    Reset,
+    Black,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    Gray,
+    DarkGray,
+    LightRed,
+    LightGreen,
+    LightYellow,
+    LightBlue,
+    LightMagenta,
+    LightCyan,
+    White,
+    Rgb(u8, u8, u8),
+    Indexed(u8),
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Renderable {
     pub glyph: char,
+    #[serde(with = "ColorDef")]
     pub fg: Color,
+    #[serde(with = "ColorDef")]
     pub bg: Color,
     pub z: i32,
 }
@@ -38,7 +65,7 @@ impl Renderable {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Viewshed {
     pub range: i32,
     pub visible: Vec<(i32, i32)>,
@@ -55,7 +82,7 @@ impl Viewshed {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct CombatStats {
     pub hp: i32,
     pub max_hp: i32,
@@ -74,7 +101,7 @@ impl CombatStats {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct TriMeter {
     pub insight: i32,
     pub sanity: i32,
@@ -91,21 +118,21 @@ impl TriMeter {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Name(pub String);
 
 // Marker components
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Player;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Monster;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct BlocksMovement;
 
 // Intent components
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct WantsToMove {
     pub dest_x: i32,
     pub dest_y: i32,

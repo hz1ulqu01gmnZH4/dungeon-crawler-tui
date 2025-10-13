@@ -1,6 +1,7 @@
 use crate::ecs::{resources::Resources, RunMode, Position};
 use crate::systems;
 use crate::ui;
+use crate::save::{quick_save, quick_load};
 use hecs::World;
 use ratatui::{backend::Backend, Terminal};
 
@@ -15,11 +16,12 @@ fn update_camera(world: &World, resources: &mut Resources) {
 pub struct App {
     pub world: World,
     pub resources: Resources,
+    pub seed: u64,
 }
 
 impl App {
-    pub fn new(world: World, resources: Resources) -> Self {
-        Self { world, resources }
+    pub fn new(world: World, resources: Resources, seed: u64) -> Self {
+        Self { world, resources, seed }
     }
 
     pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> anyhow::Result<()> {
@@ -76,6 +78,19 @@ impl App {
         systems::melee_combat_system(&mut self.world, &mut self.resources);
         systems::death_system(&mut self.world, &mut self.resources);
         systems::update_fov(&mut self.world, &mut self.resources);
+    }
+
+    pub fn save_game(&mut self) -> anyhow::Result<()> {
+        quick_save(&self.world, &self.resources, self.seed)?;
+        self.resources.log.add("Game saved.");
+        Ok(())
+    }
+
+    pub fn load_game(&mut self) -> anyhow::Result<()> {
+        self.seed = quick_load(&mut self.world, &mut self.resources)?;
+        update_camera(&self.world, &mut self.resources);
+        self.resources.log.add("Game loaded.");
+        Ok(())
     }
 }
 

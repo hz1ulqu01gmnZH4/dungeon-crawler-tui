@@ -36,14 +36,15 @@ fn main() -> Result<()> {
 }
 
 fn run_game<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> Result<()> {
-    let (world, resources) = create_game_world();
-    let mut app = App::new(world, resources);
+    let seed = 12345u64;
+    let (world, resources) = create_game_world(seed);
+    let mut app = App::new(world, resources, seed);
     app.run(terminal)
 }
 
-fn create_game_world() -> (World, Resources) {
+fn create_game_world(seed: u64) -> (World, Resources) {
     let mut world = World::new();
-    let mut resources = Resources::new(80, 50, 12345);
+    let mut resources = Resources::new(80, 50, seed);
 
     // Generate dungeon
     let rooms = generate_dungeon(

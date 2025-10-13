@@ -73,6 +73,7 @@ pub struct Resources {
     pub player_overmap_pos: (i32, i32),  // Player position on overmap
     pub in_overmap_mode: bool,            // True when viewing/navigating overmap
     pub current_location: Option<usize>,  // Current settlement/location ID (None = wilderness)
+    pub seed: u64,                        // World seed for save/load
 }
 
 impl Resources {
@@ -94,6 +95,7 @@ impl Resources {
             player_overmap_pos: start_pos,
             in_overmap_mode: false,
             current_location: None,  // Start in wilderness
+            seed,
         }
     }
 }

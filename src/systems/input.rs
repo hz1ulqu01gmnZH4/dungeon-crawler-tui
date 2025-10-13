@@ -1,6 +1,7 @@
 use crate::ecs::{Position, Player, WantsToMove};
 use crate::ecs::resources::{Resources, RunMode};
 use crate::world::{TimeCosts, generate_terrain, place_settlements};
+use crate::save::{quick_save, quick_load};
 use crossterm::event::{self, Event, KeyCode};
 use hecs::World;
 use std::time::Duration;
@@ -17,6 +18,23 @@ pub fn handle_input(world: &mut World, resources: &mut Resources) -> anyhow::Res
     if let Event::Key(key) = event::read()? {
         match key.code {
             KeyCode::Char('q') => return Ok(false),
+            KeyCode::Char('s') | KeyCode::Char('S') => {
+                // Save game
+                match quick_save(world, resources, resources.seed) {
+                    Ok(_) => resources.log.add("Game saved to savegame.json"),
+                    Err(e) => resources.log.add(format!("Failed to save: {}", e)),
+                }
+            }
+            KeyCode::Char('l') | KeyCode::Char('L') => {
+                // Load game
+                match quick_load(world, resources) {
+                    Ok(seed) => {
+                        resources.seed = seed;
+                        resources.log.add("Game loaded from savegame.json");
+                    }
+                    Err(e) => resources.log.add(format!("Failed to load: {}", e)),
+                }
+            }
             KeyCode::Tab => {
                 // Toggle between local and overmap mode
                 resources.in_overmap_mode = !resources.in_overmap_mode;
