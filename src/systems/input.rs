@@ -1,6 +1,6 @@
 use crate::ecs::{Position, Player, WantsToMove};
 use crate::ecs::resources::{Resources, RunMode};
-use crate::world::{TimeCosts, generate_terrain};
+use crate::world::{TimeCosts, generate_terrain, place_settlements};
 use crossterm::event::{self, Event, KeyCode};
 use hecs::World;
 use std::time::Duration;
@@ -22,9 +22,28 @@ pub fn handle_input(world: &mut World, resources: &mut Resources) -> anyhow::Res
                 resources.in_overmap_mode = !resources.in_overmap_mode;
 
                 if resources.in_overmap_mode {
-                    // Entering overmap mode - generate terrain if not done yet
+                    // Entering overmap mode - clear current location
+                    if let Some(loc_id) = resources.current_location {
+                        if let Some(settlement) = resources.settlements.iter().find(|s| s.id == loc_id) {
+                            resources.log.add(format!("You leave {}.", settlement.name));
+                        }
+                        resources.current_location = None;
+                    }
+
+                    // Generate terrain and settlements if not done yet
                     if !resources.overmap.tiles.iter().any(|t| t.discovered) {
                         generate_terrain(&mut resources.overmap);
+                        resources.settlements = place_settlements(&mut resources.overmap);
+
+                        // Log settlement count
+                        let city_count = resources.settlements.iter().filter(|s| s.settlement_type == crate::world::SettlementType::City).count();
+                        let town_count = resources.settlements.iter().filter(|s| s.settlement_type == crate::world::SettlementType::Town).count();
+                        let village_count = resources.settlements.iter().filter(|s| s.settlement_type == crate::world::SettlementType::Village).count();
+                        resources.log.add(format!(
+                            "Generated world with {} cities, {} towns, and {} villages.",
+                            city_count, town_count, village_count
+                        ));
+
                         // Discover starting area
                         let (px, py) = resources.player_overmap_pos;
                         for dy in -3..=3 {
@@ -50,6 +69,12 @@ pub fn handle_input(world: &mut World, resources: &mut Resources) -> anyhow::Res
                 // Wait/skip turn
                 if !resources.in_overmap_mode {
                     resources.mode = RunMode::PlayerTurn;
+                }
+            }
+            KeyCode::Enter => {
+                // Enter location (settlement, dungeon, etc.)
+                if resources.in_overmap_mode {
+                    try_enter_location(resources);
                 }
             }
             _ => {}
@@ -124,5 +149,49 @@ fn try_move_overmap(resources: &mut Resources, dx: i32, dy: i32) {
         resources
             .log
             .add(format!("You travel through {}. ({})", terrain_name, time_str));
+    }
+}
+
+fn try_enter_location(resources: &mut Resources) {
+    let (x, y) = resources.player_overmap_pos;
+
+    // Check if player is on a settlement
+    if let Some(settlement) = resources.settlements.iter().find(|s| s.position == (x, y)) {
+        let settlement_id = settlement.id;
+        let settlement_name = settlement.name.clone();
+        let settlement_type = settlement.settlement_type.name();
+
+        resources.log.add(format!(
+            "You enter {} ({}).",
+            settlement_name,
+            settlement_type
+        ));
+        resources.log.add("Press Tab to return to the world map.");
+
+        // Set current location and exit overmap mode
+        resources.current_location = Some(settlement_id);
+        resources.in_overmap_mode = false;
+
+        // TODO: Generate/load settlement local map based on settlement_id
+        return;
+    }
+
+    // Check if on other location types (dungeon, special location)
+    if let Some(tile) = resources.overmap.get_tile(x, y) {
+        match tile.terrain {
+            crate::world::TerrainType::Dungeon => {
+                resources.log.add("You enter the dungeon entrance...");
+                resources.log.add("Press Tab to return to the world map.");
+                resources.in_overmap_mode = false;
+            }
+            crate::world::TerrainType::SpecialLocation => {
+                resources.log.add("You enter the mysterious location...");
+                resources.log.add("Press Tab to return to the world map.");
+                resources.in_overmap_mode = false;
+            }
+            _ => {
+                resources.log.add("There is nothing to enter here.");
+            }
+        }
     }
 }

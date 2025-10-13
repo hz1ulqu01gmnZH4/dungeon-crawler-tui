@@ -14,7 +14,7 @@ pub fn render(frame: &mut Frame, world: &World, resources: &Resources) {
     // If in overmap mode, show overmap instead
     if resources.in_overmap_mode {
         let renderer = OvermapRenderer::new(80, 40);
-        renderer.render(frame, &resources.overmap, resources.player_overmap_pos, frame.area());
+        renderer.render(frame, &resources.overmap, &resources.settlements, resources.player_overmap_pos, frame.area());
         return;
     }
     let chunks = Layout::default()
@@ -107,7 +107,17 @@ fn render_map(frame: &mut Frame, area: Rect, world: &World, resources: &Resource
         lines.push(Line::from(spans));
     }
 
-    let title = format!(" Dungeon Clawler - Floor 1 [{:?} Layer] ", active_layer);
+    // Build title with location info
+    let title = if let Some(loc_id) = resources.current_location {
+        if let Some(settlement) = resources.settlements.iter().find(|s| s.id == loc_id) {
+            format!(" {} ({}) [{:?} Layer] ", settlement.name, settlement.settlement_type.name(), active_layer)
+        } else {
+            format!(" Dungeon Clawler - Floor 1 [{:?} Layer] ", active_layer)
+        }
+    } else {
+        format!(" Dungeon Clawler - Floor 1 [{:?} Layer] ", active_layer)
+    };
+
     let paragraph = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title(title));
 

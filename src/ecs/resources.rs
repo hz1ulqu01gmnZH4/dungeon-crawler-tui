@@ -1,5 +1,5 @@
 use crate::map::MapSet;
-use crate::world::{Overmap, WorldTime};
+use crate::world::{Overmap, WorldTime, Settlement};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -63,6 +63,7 @@ impl GameLog {
 pub struct Resources {
     pub maps: MapSet,
     pub overmap: Overmap,
+    pub settlements: Vec<Settlement>,     // All settlements in the world
     pub world_time: WorldTime,
     pub camera: Camera,
     pub rng: StdRng,
@@ -71,6 +72,7 @@ pub struct Resources {
     pub player_entity: Option<hecs::Entity>,
     pub player_overmap_pos: (i32, i32),  // Player position on overmap
     pub in_overmap_mode: bool,            // True when viewing/navigating overmap
+    pub current_location: Option<usize>,  // Current settlement/location ID (None = wilderness)
 }
 
 impl Resources {
@@ -82,6 +84,7 @@ impl Resources {
         Self {
             maps: MapSet::new(map_width, map_height),
             overmap: Overmap::new(overmap_size, overmap_size, seed),
+            settlements: Vec::new(),  // Will be populated when terrain is generated
             world_time: WorldTime::new(),
             camera: Camera::new(80, 24),
             rng: StdRng::seed_from_u64(seed),
@@ -90,6 +93,7 @@ impl Resources {
             player_entity: None,
             player_overmap_pos: start_pos,
             in_overmap_mode: false,
+            current_location: None,  // Start in wilderness
         }
     }
 }

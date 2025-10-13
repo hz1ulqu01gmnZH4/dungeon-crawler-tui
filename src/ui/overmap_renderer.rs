@@ -1,4 +1,4 @@
-use crate::world::{Overmap, TerrainType};
+use crate::world::{Overmap, TerrainType, Settlement};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -25,6 +25,7 @@ impl OvermapRenderer {
         &self,
         frame: &mut ratatui::Frame,
         overmap: &Overmap,
+        settlements: &[Settlement],
         player_pos: (i32, i32),
         area: Rect,
     ) {
@@ -40,8 +41,8 @@ impl OvermapRenderer {
         // Render map
         self.render_map(frame, overmap, player_pos, chunks[0]);
 
-        // Render legend
-        self.render_legend(frame, chunks[1]);
+        // Render legend with settlement info if player is on one
+        self.render_legend(frame, settlements, player_pos, chunks[1]);
 
         // Render instructions
         self.render_instructions(frame, chunks[2]);
@@ -106,13 +107,13 @@ impl OvermapRenderer {
         }
     }
 
-    fn render_legend(&self, frame: &mut ratatui::Frame, area: Rect) {
+    fn render_legend(&self, frame: &mut ratatui::Frame, settlements: &[Settlement], player_pos: (i32, i32), area: Rect) {
         let block = Block::default()
             .title(" Legend ")
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::White));
 
-        let legend_items = vec![
+        let mut legend_items = vec![
             Line::from(vec![
                 Span::styled("@", Style::default().fg(Color::Yellow)),
                 Span::raw(" You  "),
@@ -136,6 +137,16 @@ impl OvermapRenderer {
                 Span::raw(" Swamp"),
             ]),
         ];
+
+        // Check if player is on a settlement
+        if let Some(settlement) = settlements.iter().find(|s| s.position == player_pos) {
+            legend_items.push(Line::from(vec![
+                Span::styled(
+                    format!("Current Location: {} ({})", settlement.name, settlement.settlement_type.name()),
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
 
         let paragraph = Paragraph::new(legend_items)
             .block(block)
