@@ -1,7 +1,8 @@
-use crate::map::MapSet;
+use crate::map::{MapSet, Map};
 use crate::world::{Overmap, WorldTime, Settlement};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use std::collections::HashMap;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RunMode {
@@ -64,6 +65,7 @@ pub struct Resources {
     pub maps: MapSet,
     pub overmap: Overmap,
     pub settlements: Vec<Settlement>,     // All settlements in the world
+    pub settlement_maps: HashMap<usize, Map>,  // Generated settlement maps by ID
     pub world_time: WorldTime,
     pub camera: Camera,
     pub rng: StdRng,
@@ -86,6 +88,7 @@ impl Resources {
             maps: MapSet::new(map_width, map_height),
             overmap: Overmap::new(overmap_size, overmap_size, seed),
             settlements: Vec::new(),  // Will be populated when terrain is generated
+            settlement_maps: HashMap::new(),  // Generated on-demand when entering settlements
             world_time: WorldTime::new(),
             camera: Camera::new(80, 24),
             rng: StdRng::seed_from_u64(seed),

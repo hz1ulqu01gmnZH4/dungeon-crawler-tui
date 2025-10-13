@@ -1,6 +1,6 @@
-use crate::ecs::{Position, Player, WantsToMove};
+use crate::ecs::{Position, Player, WantsToMove, RealityLayer};
 use crate::ecs::resources::{Resources, RunMode};
-use crate::world::{TimeCosts, generate_terrain, place_settlements};
+use crate::world::{TimeCosts, generate_terrain, place_settlements, generate_settlement_map};
 use crate::save::{quick_save, quick_load};
 use crossterm::event::{self, Event, KeyCode};
 use hecs::World;
@@ -92,7 +92,7 @@ pub fn handle_input(world: &mut World, resources: &mut Resources) -> anyhow::Res
             KeyCode::Enter => {
                 // Enter location (settlement, dungeon, etc.)
                 if resources.in_overmap_mode {
-                    try_enter_location(resources);
+                    try_enter_location(world, resources);
                 }
             }
             _ => {}
@@ -170,7 +170,7 @@ fn try_move_overmap(resources: &mut Resources, dx: i32, dy: i32) {
     }
 }
 
-fn try_enter_location(resources: &mut Resources) {
+fn try_enter_location(world: &mut World, resources: &mut Resources) {
     let (x, y) = resources.player_overmap_pos;
 
     // Check if player is on a settlement
@@ -186,11 +186,35 @@ fn try_enter_location(resources: &mut Resources) {
         ));
         resources.log.add("Press Tab to return to the world map.");
 
+        // Generate settlement map if not already generated
+        if !resources.settlement_maps.contains_key(&settlement_id) {
+            let map = generate_settlement_map(settlement, resources.seed);
+            resources.settlement_maps.insert(settlement_id, map);
+        }
+
+        // Get the settlement map and find entrance position
+        if let Some(settlement_map) = resources.settlement_maps.get(&settlement_id) {
+            // Find entrance (gap in bottom wall)
+            let entrance_x = settlement_map.width / 2;
+            let entrance_y = settlement_map.height - 2; // Just inside the entrance
+
+            // Move player to entrance
+            if let Some(player_entity) = resources.player_entity {
+                if let Ok(mut pos) = world.get::<&mut Position>(player_entity) {
+                    pos.x = entrance_x;
+                    pos.y = entrance_y;
+                    pos.layer = RealityLayer::Normal;
+                }
+            }
+
+            // Copy settlement map to active map
+            resources.maps.normal = settlement_map.clone();
+            resources.camera.center_on(entrance_x, entrance_y);
+        }
+
         // Set current location and exit overmap mode
         resources.current_location = Some(settlement_id);
         resources.in_overmap_mode = false;
-
-        // TODO: Generate/load settlement local map based on settlement_id
         return;
     }
 
