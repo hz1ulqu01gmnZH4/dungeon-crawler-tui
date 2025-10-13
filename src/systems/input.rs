@@ -1,4 +1,4 @@
-use crate::ecs::{Position, Player, WantsToMove, RealityLayer};
+use crate::ecs::{Position, Player, WantsToMove, RealityLayer, CombatStats};
 use crate::ecs::resources::{Resources, RunMode};
 use crate::world::{TimeCosts, generate_terrain, place_settlements, generate_settlement_map};
 use crate::save::{quick_save, quick_load};
@@ -93,6 +93,12 @@ pub fn handle_input(world: &mut World, resources: &mut Resources) -> anyhow::Res
                 // Enter location (settlement, dungeon, etc.)
                 if resources.in_overmap_mode {
                     try_enter_location(world, resources);
+                }
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                // Rest/camp
+                if !resources.in_overmap_mode {
+                    try_rest(world, resources);
                 }
             }
             _ => {}
@@ -233,6 +239,55 @@ fn try_enter_location(world: &mut World, resources: &mut Resources) {
             }
             _ => {
                 resources.log.add("There is nothing to enter here.");
+            }
+        }
+    }
+}
+
+fn try_rest(world: &mut World, resources: &mut Resources) {
+    // Get player stats
+    if let Some(player_entity) = resources.player_entity {
+        if let Ok(stats) = world.get::<&CombatStats>(player_entity) {
+            let current_hp = stats.hp;
+            let max_hp = stats.max_hp;
+
+            // Check if already at full HP
+            if current_hp >= max_hp {
+                resources.log.add("You are already at full health.");
+                return;
+            }
+
+            // Check if in safe location (settlement)
+            let is_safe = resources.current_location.is_some();
+
+            if !is_safe {
+                resources.log.add("You cannot rest here - it's not safe! Find a settlement.");
+                return;
+            }
+
+            // Perform rest
+            let rest_hours = 8; // Long rest
+            let hp_restored = (max_hp as f32 * 0.5).ceil() as i32; // Restore 50% HP
+
+            // Update player HP
+            if let Ok(mut stats) = world.get::<&mut CombatStats>(player_entity) {
+                stats.hp = (stats.hp + hp_restored).min(stats.max_hp);
+
+                // Advance time
+                resources.world_time.advance_hours(rest_hours);
+
+                let time_str = resources.world_time.time_string();
+                let season = resources.world_time.season().name();
+                let tod = resources.world_time.time_of_day().name();
+
+                resources.log.add(format!(
+                    "You rest for {} hours and recover {} HP.",
+                    rest_hours, hp_restored
+                ));
+                resources.log.add(format!(
+                    "You wake up feeling refreshed. {} - {} ({}, Day {})",
+                    time_str, tod, season, resources.world_time.day_of_year
+                ));
             }
         }
     }
