@@ -1,5 +1,6 @@
 use crate::ecs::{Position, Renderable, Player, CombatStats, TriMeter};
 use crate::ecs::resources::Resources;
+use crate::ui::OvermapRenderer;
 use hecs::World;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -10,6 +11,12 @@ use ratatui::{
 };
 
 pub fn render(frame: &mut Frame, world: &World, resources: &Resources) {
+    // If in overmap mode, show overmap instead
+    if resources.in_overmap_mode {
+        let renderer = OvermapRenderer::new(80, 40);
+        renderer.render(frame, &resources.overmap, resources.player_overmap_pos, frame.area());
+        return;
+    }
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
