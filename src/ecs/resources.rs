@@ -1,5 +1,5 @@
 use crate::map::MapSet;
-use crate::world::Overmap;
+use crate::world::{Overmap, WorldTime};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -63,6 +63,7 @@ impl GameLog {
 pub struct Resources {
     pub maps: MapSet,
     pub overmap: Overmap,
+    pub world_time: WorldTime,
     pub camera: Camera,
     pub rng: StdRng,
     pub mode: RunMode,
@@ -81,6 +82,7 @@ impl Resources {
         Self {
             maps: MapSet::new(map_width, map_height),
             overmap: Overmap::new(overmap_size, overmap_size, seed),
+            world_time: WorldTime::new(),
             camera: Camera::new(80, 24),
             rng: StdRng::seed_from_u64(seed),
             mode: RunMode::AwaitingInput,
