@@ -165,7 +165,7 @@ fn test_equip_weapon_increases_power() {
     let _ = world.remove_one::<OnGround>(sword);
 
     let weapon_power = if let Ok(equipable) = world.get::<&Equipable>(sword) {
-        equipable.power_bonus
+        equipable.power_bonus.value()
     } else {
         0
     };
@@ -177,7 +177,7 @@ fn test_equip_weapon_increases_power() {
 
     // Get initial power
     let initial_power = if let Ok(stats) = world.get::<&CombatStats>(player) {
-        stats.power
+        stats.power.value()
     } else {
         0
     };
@@ -189,12 +189,12 @@ fn test_equip_weapon_increases_power() {
 
     // Apply bonus manually (this would normally be done by equip_system)
     if let Ok(mut stats) = world.get::<&mut CombatStats>(player) {
-        stats.power += weapon_power;
+        stats.power += dungeon_clawler_tui::Power::new(weapon_power);
     }
 
     // Verify power increased
     let final_power = if let Ok(stats) = world.get::<&CombatStats>(player) {
-        stats.power
+        stats.power.value()
     } else {
         0
     };
@@ -218,7 +218,7 @@ fn test_equip_armor_increases_defense() {
     let _ = world.remove_one::<OnGround>(armor);
 
     let armor_defense = if let Ok(equipable) = world.get::<&Equipable>(armor) {
-        equipable.defense_bonus
+        equipable.defense_bonus.value()
     } else {
         0
     };
@@ -230,7 +230,7 @@ fn test_equip_armor_increases_defense() {
 
     // Get initial defense
     let initial_defense = if let Ok(stats) = world.get::<&CombatStats>(player) {
-        stats.defense
+        stats.defense.value()
     } else {
         0
     };
@@ -242,12 +242,12 @@ fn test_equip_armor_increases_defense() {
 
     // Apply bonus manually (this would normally be done by equip_system)
     if let Ok(mut stats) = world.get::<&mut CombatStats>(player) {
-        stats.defense += armor_defense;
+        stats.defense += dungeon_clawler_tui::Defense::new(armor_defense);
     }
 
     // Verify defense increased
     let final_defense = if let Ok(stats) = world.get::<&CombatStats>(player) {
-        stats.defense
+        stats.defense.value()
     } else {
         0
     };
@@ -271,7 +271,7 @@ fn test_unequip_removes_bonuses() {
     let _ = world.remove_one::<OnGround>(sword);
 
     let weapon_power = if let Ok(equipable) = world.get::<&Equipable>(sword) {
-        equipable.power_bonus
+        equipable.power_bonus.value()
     } else {
         0
     };
@@ -284,11 +284,11 @@ fn test_unequip_removes_bonuses() {
 
     // Apply bonus
     if let Ok(mut stats) = world.get::<&mut CombatStats>(player) {
-        stats.power += weapon_power;
+        stats.power += dungeon_clawler_tui::Power::new(weapon_power);
     }
 
     let equipped_power = if let Ok(stats) = world.get::<&CombatStats>(player) {
-        stats.power
+        stats.power.value()
     } else {
         0
     };
@@ -300,11 +300,11 @@ fn test_unequip_removes_bonuses() {
 
     // Remove bonus
     if let Ok(mut stats) = world.get::<&mut CombatStats>(player) {
-        stats.power -= weapon_power;
+        stats.power -= dungeon_clawler_tui::Power::new(weapon_power);
     }
 
     let final_power = if let Ok(stats) = world.get::<&CombatStats>(player) {
-        stats.power
+        stats.power.value()
     } else {
         0
     };

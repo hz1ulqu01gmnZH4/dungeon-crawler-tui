@@ -1,5 +1,6 @@
-use crate::ecs::{WantsToMelee, CombatStats, Name};
+use crate::ecs::{CombatStats, Name, GameEvent};
 use crate::ecs::resources::Resources;
+use crate::domain_types::{Power, Defense};
 use hecs::World;
 use rand::Rng;
 
@@ -12,9 +13,9 @@ pub enum AttackResult {
 
 /// Calculate attack result with hit chance, dodge, and critical hits
 fn calculate_attack(
-    attacker_power: i32,
+    attacker_power: Power,
     attacker_level: i32,
-    target_defense: i32,
+    target_defense: Defense,
     target_level: i32,
     rng: &mut impl Rng,
 ) -> AttackResult {
@@ -33,7 +34,7 @@ fn calculate_attack(
     let is_crit = rng.gen_range(0.0..100.0) < crit_chance;
 
     // Calculate base damage
-    let base_damage = (attacker_power - target_defense).max(1);
+    let base_damage = (attacker_power.value() - target_defense.value()).max(1);
 
     if is_crit {
         // Critical hits deal 2x damage
@@ -49,83 +50,74 @@ fn calculate_attack(
 pub fn melee_combat_system(world: &mut World, resources: &mut Resources) {
     let mut combat_results = Vec::new();
 
-    // Collect combat intents
-    for (attacker, wants_melee) in world.query::<&WantsToMelee>().iter() {
-        let target = wants_melee.target;
-
-        // Track if player is attacking (for UI)
-        if world.get::<&crate::ecs::Player>(attacker).is_ok() {
-            resources.last_combat_target = Some(target);
-        }
-
-        // Get attacker stats
-        let attacker_stats = match world.get::<&CombatStats>(attacker) {
-            Ok(stats) => *stats,
-            Err(_) => continue,
-        };
-
-        // Get target stats
-        let target_stats = match world.get::<&CombatStats>(target) {
-            Ok(stats) => *stats,
-            Err(_) => continue,
-        };
-
-        // Get names for logging
-        let attacker_name = world
-            .get::<&Name>(attacker)
-            .map(|n| n.0.clone())
-            .unwrap_or_else(|_| "Someone".to_string());
-
-        let target_name = world
-            .get::<&Name>(target)
-            .map(|n| n.0.clone())
-            .unwrap_or_else(|_| "something".to_string());
-
-        // Calculate attack with enhanced mechanics
-        let result = calculate_attack(
-            attacker_stats.power,
-            1, // TODO: Add level component later
-            target_stats.defense,
-            1, // TODO: Add level component later
-            &mut resources.rng,
-        );
-
-        match result {
-            AttackResult::Miss => {
-                resources.log.add(format!("{} attacks {} but misses!", attacker_name, target_name));
+    // Process Melee events from the queue
+    for event in resources.events.iter() {
+        if let GameEvent::Melee { attacker, target } = event {
+            // Track if player is attacking (for UI)
+            if world.get::<&crate::ecs::Player>(*attacker).is_ok() {
+                resources.player.last_combat_target = Some(*target);
             }
-            AttackResult::Hit(damage) => {
-                resources.log.add(format!(
-                    "{} hits {} for {} damage",
-                    attacker_name, target_name, damage
-                ));
-                combat_results.push((target, damage));
-            }
-            AttackResult::Critical(damage) => {
-                resources.log.add(format!(
-                    "{} lands a CRITICAL HIT on {} for {} damage!",
-                    attacker_name, target_name, damage
-                ));
-                combat_results.push((target, damage));
+
+            // Get attacker stats
+            let attacker_stats = match world.get::<&CombatStats>(*attacker) {
+                Ok(stats) => *stats,
+                Err(_) => continue,
+            };
+
+            // Get target stats
+            let target_stats = match world.get::<&CombatStats>(*target) {
+                Ok(stats) => *stats,
+                Err(_) => continue,
+            };
+
+            // Get names for logging
+            let attacker_name = world
+                .get::<&Name>(*attacker)
+                .map(|n| n.0.clone())
+                .unwrap_or_else(|_| "Someone".to_string());
+
+            let target_name = world
+                .get::<&Name>(*target)
+                .map(|n| n.0.clone())
+                .unwrap_or_else(|_| "something".to_string());
+
+            // Calculate attack with enhanced mechanics
+            let result = calculate_attack(
+                attacker_stats.power,
+                1, // TODO: Add level component later
+                target_stats.defense,
+                1, // TODO: Add level component later
+                &mut resources.sim.rng,
+            );
+
+            match result {
+                AttackResult::Miss => {
+                    resources.ui.log.add(format!("{} attacks {} but misses!", attacker_name, target_name));
+                }
+                AttackResult::Hit(damage) => {
+                    resources.ui.log.add(format!(
+                        "{} hits {} for {} damage",
+                        attacker_name, target_name, damage
+                    ));
+                    combat_results.push((*target, damage));
+                }
+                AttackResult::Critical(damage) => {
+                    resources.ui.log.add(format!(
+                        "{} lands a CRITICAL HIT on {} for {} damage!",
+                        attacker_name, target_name, damage
+                    ));
+                    combat_results.push((*target, damage));
+                }
             }
         }
     }
+
 
     // Apply damage
     for (target, damage) in combat_results {
         if let Ok(mut stats) = world.get::<&mut CombatStats>(target) {
-            stats.hp -= damage;
+            stats.hp = stats.hp.saturating_sub(damage);
         }
-    }
-
-    // Clean up combat intents
-    let entities_to_clean: Vec<_> = world
-        .query::<&WantsToMelee>()
-        .iter()
-        .map(|(e, _)| e)
-        .collect();
-    for entity in entities_to_clean {
-        let _ = world.remove_one::<WantsToMelee>(entity);
     }
 }
 
@@ -133,7 +125,7 @@ pub fn death_system(world: &mut World, resources: &mut Resources) {
     let mut dead = Vec::new();
 
     for (entity, stats) in world.query::<&CombatStats>().iter() {
-        if stats.hp <= 0 {
+        if stats.hp.is_dead() {
             dead.push(entity);
         }
     }
@@ -144,11 +136,11 @@ pub fn death_system(world: &mut World, resources: &mut Resources) {
             .map(|n| n.0.clone())
             .unwrap_or_else(|_| "Something".to_string());
 
-        resources.log.add(format!("{} has died!", name));
+        resources.ui.log.add(format!("{} has died!", name));
 
         // Check if player died
         if world.get::<&crate::ecs::Player>(entity).is_ok() {
-            resources.mode = crate::ecs::RunMode::GameOver;
+            resources.sim.mode = crate::ecs::RunMode::GameOver;
         } else {
             // Drop loot at monster's position before despawning
             let drop_pos = {
@@ -161,9 +153,9 @@ pub fn death_system(world: &mut World, resources: &mut Resources) {
 
             if let Some((x, y)) = drop_pos {
                 // 40% chance to drop an item
-                if resources.rng.gen_bool(0.4) {
-                    crate::systems::spawn_random_item(world, x, y, &mut resources.rng);
-                    resources.log.add(format!("{} dropped something!", name));
+                if resources.sim.rng.gen_bool(0.4) {
+                    crate::systems::spawn_random_item(world, x, y, &mut resources.sim.rng);
+                    resources.ui.log.add(format!("{} dropped something!", name));
                 }
             }
 
@@ -185,7 +177,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(100); // Seed for deterministic test
 
         // Power 5, Defense 2 should deal 3 damage (with variance)
-        let result = calculate_attack(5, 1, 2, 1, &mut rng);
+        let result = calculate_attack(Power::new(5), 1, Defense::new(2), 1, &mut rng);
 
         match result {
             AttackResult::Hit(damage) => {
@@ -207,7 +199,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(200);
 
         // Even with 0 power and high defense, should deal at least 1 damage
-        let result = calculate_attack(0, 1, 10, 1, &mut rng);
+        let result = calculate_attack(Power::new(0), 1, Defense::new(10), 1, &mut rng);
 
         match result {
             AttackResult::Hit(damage) => {
@@ -229,7 +221,7 @@ mod tests {
         // Test multiple times to get hits (not misses)
         let mut found_hit = false;
         for _ in 0..20 {
-            let result = calculate_attack(10, 1, 5, 1, &mut rng);
+            let result = calculate_attack(Power::new(10), 1, Defense::new(5), 1, &mut rng);
             if let AttackResult::Hit(damage) | AttackResult::Critical(damage) = result {
                 // 10 power - 5 defense = 5 base damage
                 // With variance, should be around 3-7 for normal hits
@@ -261,18 +253,15 @@ mod tests {
             Position::new(1, 0, RealityLayer::Normal),
         ));
 
-        // Add combat intent
-        world.insert_one(attacker, WantsToMelee { target }).unwrap();
+        // Send combat event
+        resources.events.send(GameEvent::Melee { attacker, target });
 
         // Run combat system
         melee_combat_system(&mut world, &mut resources);
 
         // Target should have taken damage
         let target_stats = world.get::<&CombatStats>(target).unwrap();
-        assert!(target_stats.hp < 10, "Target should have taken damage");
-
-        // Combat intent should be removed
-        assert!(world.get::<&WantsToMelee>(attacker).is_err(), "Combat intent should be removed");
+        assert!(target_stats.hp.value() < 10, "Target should have taken damage");
     }
 
     #[test]
@@ -294,7 +283,7 @@ mod tests {
         assert!(!world.contains(dead_entity), "Dead entity should be despawned");
 
         // Log should mention death
-        let has_death_message = resources.log.messages.iter().any(|msg| msg.contains("died"));
+        let has_death_message = resources.ui.log.messages.iter().any(|msg| msg.contains("died"));
         assert!(has_death_message, "Should log death message");
     }
 
@@ -318,7 +307,7 @@ mod tests {
         assert!(world.contains(player), "Player should not be despawned");
 
         // Game should be over
-        assert_eq!(resources.mode, crate::ecs::RunMode::GameOver, "Game should be over when player dies");
+        assert_eq!(resources.sim.mode, crate::ecs::RunMode::GameOver, "Game should be over when player dies");
     }
 
     #[test]
@@ -357,7 +346,7 @@ mod tests {
                 CombatStats::new(10, 4, 0),
                 Position::new(i, 0, RealityLayer::Normal),
             ));
-            world.insert_one(attacker, WantsToMelee { target }).unwrap();
+            resources.events.send(GameEvent::Melee { attacker, target });
         }
 
         let initial_hp = world.get::<&CombatStats>(target).unwrap().hp;
@@ -386,12 +375,45 @@ mod tests {
             Position::new(1, 0, RealityLayer::Normal),
         ));
 
-        world.insert_one(attacker, WantsToMelee { target }).unwrap();
+        resources.events.send(GameEvent::Melee { attacker, target });
 
-        let initial_log_count = resources.log.messages.len();
+        let initial_log_count = resources.ui.log.messages.len();
         melee_combat_system(&mut world, &mut resources);
 
         // Should have logged an attack message
-        assert!(resources.log.messages.len() > initial_log_count, "Combat should log messages");
+        assert!(resources.ui.log.messages.len() > initial_log_count, "Combat should log messages");
+    }
+
+    // NEW TEST: Event-based combat
+    #[test]
+    fn test_melee_combat_via_events() {
+        let mut world = World::new();
+        let mut resources = Resources::new(80, 50, 12345);
+
+        let attacker = world.spawn((
+            Name("Goblin".to_string()),
+            CombatStats::new(10, 3, 0),
+            Position::new(0, 0, RealityLayer::Normal),
+        ));
+
+        let target = world.spawn((
+            Name("Player".to_string()),
+            Player,
+            CombatStats::new(10, 0, 1),
+            Position::new(1, 0, RealityLayer::Normal),
+        ));
+
+        // Send Melee event instead of adding component
+        resources.events.send(GameEvent::Melee { attacker, target });
+
+        let initial_log_count = resources.ui.log.messages.len();
+        melee_combat_system(&mut world, &mut resources);
+
+        // Should have logged an attack message
+        assert!(resources.ui.log.messages.len() > initial_log_count, "Combat should log messages via events");
+
+        // Target should have taken damage
+        let target_stats = world.get::<&CombatStats>(target).unwrap();
+        assert!(target_stats.hp.value() < 10, "Target should have taken damage from event-based attack");
     }
 }

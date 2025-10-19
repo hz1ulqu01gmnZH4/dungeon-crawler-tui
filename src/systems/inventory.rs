@@ -3,21 +3,24 @@
 /// Handles item pickup, drop, equip/unequip, and usage
 
 use crate::ecs::{
-    Consumable, CombatStats, Equipable, Inventory, Item, ItemData, OnGround, Player, Position,
-    Stackable, WantsToDropItem, WantsToEquipItem, WantsToPickupItem, WantsToUnequipItem,
-    WantsToUseItem,
+    Consumable, CombatStats, Equipable, Inventory, Item, ItemData, OnGround, Position,
+    Stackable, GameEvent,
 };
 use crate::ecs::resources::Resources;
+use crate::domain_types::HitPoints;
 use hecs::World;
 
 /// Process item pickup intents
 pub fn pickup_system(world: &mut World, resources: &mut Resources) {
     let mut pickups = Vec::new();
 
-    // Collect all pickup intents
-    for (entity, intent) in world.query::<&WantsToPickupItem>().iter() {
-        pickups.push((entity, intent.item));
+    // Process PickupItem events from the queue
+    for event in resources.events.iter() {
+        if let GameEvent::PickupItem { entity, item } = event {
+            pickups.push((*entity, *item));
+        }
     }
+
 
     // Process pickups
     for (entity, item) in pickups {
@@ -84,7 +87,7 @@ pub fn pickup_system(world: &mut World, resources: &mut Resources) {
                         let _ = world.despawn(item);
                         stacked = true;
 
-                        resources.log.add(format!(
+                        resources.ui.log.add(format!(
                             "You pick up {} {} (stack: {}/{}).",
                             qty_to_add, item_name, new_quantity.unwrap(), max_stack
                         ));
@@ -113,25 +116,22 @@ pub fn pickup_system(world: &mut World, resources: &mut Resources) {
                     // Get item name for message
                     if let Ok(item_data) = world.get::<&ItemData>(item) {
                         if let Ok(stackable) = world.get::<&Stackable>(item) {
-                            resources.log.add(format!(
+                            resources.ui.log.add(format!(
                                 "You pick up {} (qty: {}).",
                                 item_data.name, stackable.quantity
                             ));
                         } else {
-                            resources.log.add(format!("You pick up {}.", item_data.name));
+                            resources.ui.log.add(format!("You pick up {}.", item_data.name));
                         }
                     } else {
-                        resources.log.add("You pick up an item.");
+                        resources.ui.log.add("You pick up an item.");
                     }
                 }
                 Err(msg) => {
-                    resources.log.add(msg);
+                    resources.ui.log.add(msg);
                 }
             }
         }
-
-        // Remove intent
-        let _ = world.remove_one::<WantsToPickupItem>(entity);
     }
 }
 
@@ -139,10 +139,13 @@ pub fn pickup_system(world: &mut World, resources: &mut Resources) {
 pub fn drop_system(world: &mut World, resources: &mut Resources) {
     let mut drops = Vec::new();
 
-    // Collect all drop intents
-    for (entity, intent) in world.query::<&WantsToDropItem>().iter() {
-        drops.push((entity, intent.item));
+    // Process DropItem events from the queue
+    for event in resources.events.iter() {
+        if let GameEvent::DropItem { entity, item } = event {
+            drops.push((*entity, *item));
+        }
     }
+
 
     // Process drops
     for (entity, item) in drops {
@@ -199,17 +202,14 @@ pub fn drop_system(world: &mut World, resources: &mut Resources) {
             // Get item name for message
             if let Ok(item_data) = world.get::<&ItemData>(item) {
                 if was_equipped {
-                    resources.log.add(format!("You unequip and drop {}.", item_data.name));
+                    resources.ui.log.add(format!("You unequip and drop {}.", item_data.name));
                 } else {
-                    resources.log.add(format!("You drop {}.", item_data.name));
+                    resources.ui.log.add(format!("You drop {}.", item_data.name));
                 }
             } else {
-                resources.log.add("You drop an item.");
+                resources.ui.log.add("You drop an item.");
             }
         }
-
-        // Remove intent
-        let _ = world.remove_one::<WantsToDropItem>(entity);
     }
 }
 
@@ -217,10 +217,13 @@ pub fn drop_system(world: &mut World, resources: &mut Resources) {
 pub fn equip_system(world: &mut World, resources: &mut Resources) {
     let mut equips = Vec::new();
 
-    // Collect all equip intents
-    for (entity, intent) in world.query::<&WantsToEquipItem>().iter() {
-        equips.push((entity, intent.item));
+    // Process EquipItem events from the queue
+    for event in resources.events.iter() {
+        if let GameEvent::EquipItem { entity, item } = event {
+            equips.push((*entity, *item));
+        }
     }
+
 
     // Process equips
     for (entity, item) in equips {
@@ -253,8 +256,7 @@ pub fn equip_system(world: &mut World, resources: &mut Resources) {
             };
 
             if !has_item {
-                resources.log.add("You must pick up the item first.");
-                let _ = world.remove_one::<WantsToEquipItem>(entity);
+                resources.ui.log.add("You must pick up the item first.");
                 continue;
             }
 
@@ -279,7 +281,7 @@ pub fn equip_system(world: &mut World, resources: &mut Resources) {
 
             // Get item name for message
             if let Ok(item_data) = world.get::<&ItemData>(item) {
-                resources.log.add(format!(
+                resources.ui.log.add(format!(
                     "You equip {} in {}. (+{} power, +{} defense)",
                     item_data.name,
                     slot.name(),
@@ -287,14 +289,11 @@ pub fn equip_system(world: &mut World, resources: &mut Resources) {
                     defense_bonus
                 ));
             } else {
-                resources.log.add(format!("You equip an item in {}.", slot.name()));
+                resources.ui.log.add(format!("You equip an item in {}.", slot.name()));
             }
         } else {
-            resources.log.add("This item cannot be equipped.");
+            resources.ui.log.add("This item cannot be equipped.");
         }
-
-        // Remove intent
-        let _ = world.remove_one::<WantsToEquipItem>(entity);
     }
 }
 
@@ -302,10 +301,13 @@ pub fn equip_system(world: &mut World, resources: &mut Resources) {
 pub fn unequip_system(world: &mut World, resources: &mut Resources) {
     let mut unequips = Vec::new();
 
-    // Collect all unequip intents
-    for (entity, intent) in world.query::<&WantsToUnequipItem>().iter() {
-        unequips.push((entity, intent.slot));
+    // Process UnequipItem events from the queue
+    for event in resources.events.iter() {
+        if let GameEvent::UnequipItem { entity, slot } = event {
+            unequips.push((*entity, *slot));
+        }
     }
+
 
     // Process unequips
     for (entity, slot) in unequips {
@@ -324,17 +326,14 @@ pub fn unequip_system(world: &mut World, resources: &mut Resources) {
 
                 // Get item name for message
                 if let Ok(item_data) = world.get::<&ItemData>(item) {
-                    resources.log.add(format!("You unequip {} from {}.", item_data.name, slot.name()));
+                    resources.ui.log.add(format!("You unequip {} from {}.", item_data.name, slot.name()));
                 } else {
-                    resources.log.add(format!("You unequip an item from {}.", slot.name()));
+                    resources.ui.log.add(format!("You unequip an item from {}.", slot.name()));
                 }
             } else {
-                resources.log.add(format!("Nothing equipped in {}.", slot.name()));
+                resources.ui.log.add(format!("Nothing equipped in {}.", slot.name()));
             }
         }
-
-        // Remove intent
-        let _ = world.remove_one::<WantsToUnequipItem>(entity);
     }
 }
 
@@ -342,10 +341,13 @@ pub fn unequip_system(world: &mut World, resources: &mut Resources) {
 pub fn use_item_system(world: &mut World, resources: &mut Resources) {
     let mut uses = Vec::new();
 
-    // Collect all use intents
-    for (entity, intent) in world.query::<&WantsToUseItem>().iter() {
-        uses.push((entity, intent.item));
+    // Process UseItem events from the queue
+    for event in resources.events.iter() {
+        if let GameEvent::UseItem { entity, item } = event {
+            uses.push((*entity, *item));
+        }
     }
+
 
     // Process uses
     for (entity, item) in uses {
@@ -361,17 +363,17 @@ pub fn use_item_system(world: &mut World, resources: &mut Resources) {
         if let Some((hp_restore, uses_left)) = consumable_data {
             // Check if item has uses left
             if uses_left <= 0 {
-                resources.log.add("This item has no uses left.");
-                let _ = world.remove_one::<WantsToUseItem>(entity);
+                resources.ui.log.add("This item has no uses left.");
                 continue;
             }
 
             // Apply effect
             let actual_restore = {
                 if let Ok(mut stats) = world.get::<&mut CombatStats>(entity) {
-                    let old_hp = stats.hp;
-                    stats.hp = (stats.hp + hp_restore).min(stats.max_hp);
-                    stats.hp - old_hp
+                    let old_hp = stats.hp.value();
+                    let new_hp = stats.hp.saturating_add(hp_restore);
+                    stats.hp = HitPoints::new(new_hp.value().min(stats.max_hp.value()));
+                    stats.hp.value() - old_hp
                 } else {
                     0
                 }
@@ -380,15 +382,15 @@ pub fn use_item_system(world: &mut World, resources: &mut Resources) {
             // Get item name for message
             if let Ok(item_data) = world.get::<&ItemData>(item) {
                 if actual_restore > 0 {
-                    resources.log.add(format!(
+                    resources.ui.log.add(format!(
                         "You use {}. Restored {} HP.",
                         item_data.name, actual_restore
                     ));
                 } else {
-                    resources.log.add(format!("You use {} but are already at full HP.", item_data.name));
+                    resources.ui.log.add(format!("You use {} but are already at full HP.", item_data.name));
                 }
             } else if actual_restore > 0 {
-                resources.log.add(format!("Restored {} HP.", actual_restore));
+                resources.ui.log.add(format!("Restored {} HP.", actual_restore));
             }
 
             // Decrease uses
@@ -432,14 +434,11 @@ pub fn use_item_system(world: &mut World, resources: &mut Resources) {
                     inventory.remove_item(item);
                 }
                 let _ = world.despawn(item);
-                resources.log.add("The item is consumed.");
+                resources.ui.log.add("The item is consumed.");
             }
         } else {
-            resources.log.add("This item cannot be used.");
+            resources.ui.log.add("This item cannot be used.");
         }
-
-        // Remove intent
-        let _ = world.remove_one::<WantsToUseItem>(entity);
     }
 }
 
@@ -502,6 +501,7 @@ pub fn find_equipable_for_slot(
 mod tests {
     use super::*;
     use crate::ecs::{EquipSlot, ItemCategory, Name, Player, RealityLayer};
+    use crate::domain_types::{Defense, MaxHitPoints, Money, Power};
 
     fn create_test_player(world: &mut World) -> hecs::Entity {
         world.spawn((
@@ -523,7 +523,7 @@ mod tests {
                 description: "A test weapon".to_string(),
                 detailed_description: "Used for testing".to_string(),
                 weight: 3,
-                value: 100,
+                value: Money::new(100),
                 category: ItemCategory::Weapon,
                 max_stack: 1,
             },
@@ -538,14 +538,14 @@ mod tests {
                 description: "A sturdy iron blade".to_string(),
                 detailed_description: "Forged from iron".to_string(),
                 weight: 5,
-                value: 200,
+                value: Money::new(200),
                 category: ItemCategory::Weapon,
                 max_stack: 1,
             },
             Equipable {
                 slot: EquipSlot::MainHand,
-                power_bonus: 3,
-                defense_bonus: 0,
+                power_bonus: Power::new(3),
+                defense_bonus: Defense::new(0),
             },
         ))
     }
@@ -560,7 +560,7 @@ mod tests {
                 description: "Restores health".to_string(),
                 detailed_description: "A red potion that heals wounds".to_string(),
                 weight: 1,
-                value: 50,
+                value: Money::new(50),
                 category: ItemCategory::Consumable,
                 max_stack: 10,
             },
@@ -580,8 +580,8 @@ mod tests {
         let player = create_test_player(&mut world);
         let item = create_test_item(&mut world, Position::new(5, 5, RealityLayer::Normal));
 
-        resources.player_entity = Some(player);
-        world.insert_one(player, WantsToPickupItem { item }).unwrap();
+        resources.player.player_entity = Some(player);
+        resources.events.send(GameEvent::PickupItem { entity: player, item });
 
         pickup_system(&mut world, &mut resources);
 
@@ -591,9 +591,6 @@ mod tests {
 
         // OnGround marker should be removed
         assert!(world.get::<&OnGround>(item).is_err(), "OnGround marker should be removed");
-
-        // Intent should be removed
-        assert!(world.get::<&WantsToPickupItem>(player).is_err(), "Pickup intent should be removed");
     }
 
     #[test]
@@ -615,15 +612,15 @@ mod tests {
         // Try to pick up second item
         let item2 = create_test_item(&mut world, Position::new(5, 5, RealityLayer::Normal));
 
-        resources.player_entity = Some(player);
-        world.insert_one(player, WantsToPickupItem { item: item2 }).unwrap();
+        resources.player.player_entity = Some(player);
+        resources.events.send(GameEvent::PickupItem { entity: player, item: item2 });
 
         pickup_system(&mut world, &mut resources);
 
         // Should fail - inventory full
         let inv = world.get::<&Inventory>(player).unwrap();
         assert!(!inv.items.contains(&item2), "Should not pickup when inventory full");
-        assert!(resources.log.messages.iter().any(|m| m.contains("full") || m.contains("capacity")), "Should log capacity message");
+        assert!(resources.ui.log.messages.iter().any(|m| m.contains("full") || m.contains("capacity")), "Should log capacity message");
     }
 
     #[test]
@@ -641,7 +638,7 @@ mod tests {
         world.get::<&mut Inventory>(player).unwrap().add_item(item).unwrap();
 
         // Drop the item
-        world.insert_one(player, WantsToDropItem { item }).unwrap();
+        resources.events.send(GameEvent::DropItem { entity: player, item });
         drop_system(&mut world, &mut resources);
 
         // Item should NOT be in inventory
@@ -673,7 +670,7 @@ mod tests {
         let initial_power = world.get::<&CombatStats>(player).unwrap().power;
 
         // Equip weapon
-        world.insert_one(player, WantsToEquipItem { item: weapon }).unwrap();
+        resources.events.send(GameEvent::EquipItem { entity: player, item: weapon });
         equip_system(&mut world, &mut resources);
 
         // Weapon should be equipped
@@ -682,7 +679,7 @@ mod tests {
 
         // Stats should be boosted
         let stats = world.get::<&CombatStats>(player).unwrap();
-        assert_eq!(stats.power, initial_power + 3, "Power should increase by weapon bonus");
+        assert_eq!(stats.power, initial_power + Power::new(3), "Power should increase by weapon bonus");
     }
 
     #[test]
@@ -707,7 +704,7 @@ mod tests {
         let equipped_power = world.get::<&CombatStats>(player).unwrap().power;
 
         // Unequip
-        world.insert_one(player, WantsToUnequipItem { slot: EquipSlot::MainHand }).unwrap();
+        resources.events.send(GameEvent::UnequipItem { entity: player, slot: EquipSlot::MainHand });
         unequip_system(&mut world, &mut resources);
 
         // Should be unequipped
@@ -716,7 +713,7 @@ mod tests {
 
         // Stats should be reduced
         let stats = world.get::<&CombatStats>(player).unwrap();
-        assert_eq!(stats.power, equipped_power - 3, "Power should decrease when unequipped");
+        assert_eq!(stats.power, equipped_power - Power::new(3), "Power should decrease when unequipped");
     }
 
     #[test]
@@ -728,10 +725,10 @@ mod tests {
             Player,
             Inventory::new(20),
             CombatStats {
-                hp: 5,
-                max_hp: 20,  // Damaged: 5/20 HP
-                power: 5,
-                defense: 0,
+                hp: HitPoints::new(5),
+                max_hp: MaxHitPoints::new(20),  // Damaged: 5/20 HP
+                power: Power::new(5),
+                defense: Defense::new(0),
             },
         ));
 
@@ -742,7 +739,7 @@ mod tests {
                 description: "Restores health".to_string(),
                 detailed_description: "A red potion".to_string(),
                 weight: 1,
-                value: 50,
+                value: Money::new(50),
                 category: ItemCategory::Consumable,
                 max_stack: 10,
             },
@@ -756,12 +753,12 @@ mod tests {
         world.get::<&mut Inventory>(player).unwrap().add_item(potion).unwrap();
 
         // Use potion
-        world.insert_one(player, WantsToUseItem { item: potion }).unwrap();
+        resources.events.send(GameEvent::UseItem { entity: player, item: potion });
         use_item_system(&mut world, &mut resources);
 
         // HP should be restored
         let stats = world.get::<&CombatStats>(player).unwrap();
-        assert_eq!(stats.hp, 15, "HP should be restored by 10 (5 + 10 = 15)");
+        assert_eq!(stats.hp, HitPoints::new(15), "HP should be restored by 10 (5 + 10 = 15)");
 
         // Potion should be consumed (removed)
         assert!(!world.contains(potion), "Potion should be consumed and removed");
@@ -778,16 +775,16 @@ mod tests {
         let potion1 = create_test_potion(&mut world, Position::new(5, 5, RealityLayer::Normal));
         let potion2 = create_test_potion(&mut world, Position::new(5, 5, RealityLayer::Normal));
 
-        resources.player_entity = Some(player);
+        resources.player.player_entity = Some(player);
 
         // Pickup first potion
-        world.insert_one(player, WantsToPickupItem { item: potion1 }).unwrap();
+        resources.events.send(GameEvent::PickupItem { entity: player, item: potion1 });
         pickup_system(&mut world, &mut resources);
 
         let inv_after_first = world.get::<&Inventory>(player).unwrap().items.len();
 
         // Pickup second potion (should stack)
-        world.insert_one(player, WantsToPickupItem { item: potion2 }).unwrap();
+        resources.events.send(GameEvent::PickupItem { entity: player, item: potion2 });
         pickup_system(&mut world, &mut resources);
 
         let inv_after_second = world.get::<&Inventory>(player).unwrap().items.len();

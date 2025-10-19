@@ -1,8 +1,8 @@
-use crate::ecs::{Position, Monster, Player, WantsToMove, Viewshed};
+use crate::ecs::{Position, Monster, Player, Viewshed, GameEvent};
 use crate::ecs::resources::Resources;
 use hecs::World;
 
-pub fn monster_ai_system(world: &mut World, _resources: &Resources) {
+pub fn monster_ai_system(world: &mut World, resources: &mut Resources) {
     // Get player position
     let player_pos = {
         let mut player_pos = None;
@@ -40,8 +40,8 @@ pub fn monster_ai_system(world: &mut World, _resources: &Resources) {
         }
     }
 
-    // Apply movement intents
+    // Send Move events for monster movement
     for (entity, dest_x, dest_y) in monster_moves {
-        let _ = world.insert_one(entity, WantsToMove::new(dest_x, dest_y));
+        resources.events.send(GameEvent::Move { entity, dest_x, dest_y });
     }
 }

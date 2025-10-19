@@ -39,7 +39,7 @@ pub fn render_character_screen(frame: &mut Frame, world: &World, resources: &Res
         .split(chunks[1]);
 
     // Get player data
-    if let Some(player_entity) = resources.player_entity {
+    if let Some(player_entity) = resources.player.player_entity {
         // Left column: Stats and TriMeter
         let left_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -79,7 +79,7 @@ fn render_stats(frame: &mut Frame, stats: &CombatStats, area: Rect) {
     let mut lines = Vec::new();
 
     // HP
-    let hp_percent = (stats.hp as f32 / stats.max_hp as f32 * 100.0) as i32;
+    let hp_percent = (stats.hp.value() as f32 / stats.max_hp.value() as f32 * 100.0) as i32;
     let hp_color = if hp_percent > 75 {
         Color::Green
     } else if hp_percent > 25 {
@@ -186,10 +186,10 @@ fn render_equipment_full(frame: &mut Frame, world: &World, inventory: &Inventory
 
             let bonus_str = if let Ok(equipable) = world.get::<&Equipable>(item_entity) {
                 let mut parts = Vec::new();
-                if equipable.power_bonus != 0 {
+                if equipable.power_bonus.value() != 0 {
                     parts.push(format!("+{} Pow", equipable.power_bonus));
                 }
-                if equipable.defense_bonus != 0 {
+                if equipable.defense_bonus.value() != 0 {
                     parts.push(format!("+{} Def", equipable.defense_bonus));
                 }
                 if parts.is_empty() {

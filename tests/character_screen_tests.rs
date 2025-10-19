@@ -9,18 +9,20 @@ use hecs::World;
 
 #[test]
 fn test_character_screen_flag_initializes_false() {
+    use dungeon_clawler_tui::ecs::resources::UiMode;
+
     let resources = Resources::new(80, 50, 12345);
-    assert_eq!(resources.in_character_screen, false);
+    assert!(matches!(resources.ui_mode, UiMode::MainMenu { .. }));
 }
 
 #[test]
 fn test_combat_stats_display_values() {
     let stats = CombatStats::new(30, 5, 2);
 
-    assert_eq!(stats.hp, 30);
-    assert_eq!(stats.max_hp, 30);
-    assert_eq!(stats.power, 5);
-    assert_eq!(stats.defense, 2);
+    assert_eq!(stats.hp.value(), 30);
+    assert_eq!(stats.max_hp.value(), 30);
+    assert_eq!(stats.power.value(), 5);
+    assert_eq!(stats.defense.value(), 2);
 }
 
 #[test]
@@ -96,13 +98,13 @@ fn test_equipment_bonuses_calculation() {
 
     // Get bonuses
     let sword_power = if let Ok(eq) = world.get::<&Equipable>(sword) {
-        eq.power_bonus
+        eq.power_bonus.value()
     } else {
         0
     };
 
     let armor_defense = if let Ok(eq) = world.get::<&Equipable>(armor) {
-        eq.defense_bonus
+        eq.defense_bonus.value()
     } else {
         0
     };
@@ -117,14 +119,14 @@ fn test_equipment_bonuses_calculation() {
 
     // Apply bonuses
     if let Ok(mut stats) = world.get::<&mut CombatStats>(player) {
-        stats.power += sword_power;
-        stats.defense += armor_defense;
+        stats.power += dungeon_clawler_tui::Power::new(sword_power);
+        stats.defense += dungeon_clawler_tui::Defense::new(armor_defense);
     }
 
     // Verify final stats
     let stats = world.get::<&CombatStats>(player).unwrap();
-    assert_eq!(stats.power, 5 + sword_power); // Base + weapon
-    assert_eq!(stats.defense, 2 + armor_defense); // Base + armor
+    assert_eq!(stats.power.value(), 5 + sword_power); // Base + weapon
+    assert_eq!(stats.defense.value(), 2 + armor_defense); // Base + armor
 }
 
 #[test]
@@ -132,27 +134,19 @@ fn test_hp_percentage_calculation() {
     let stats = CombatStats::new(30, 5, 2);
 
     // Full HP
-    let percent = (stats.hp as f32 / stats.max_hp as f32 * 100.0) as i32;
+    let percent = (stats.hp.value() as f32 / stats.max_hp.value() as f32 * 100.0) as i32;
     assert_eq!(percent, 100);
 
     // Test at 50% HP
-    let damaged_stats = CombatStats {
-        hp: 15,
-        max_hp: 30,
-        power: 5,
-        defense: 2,
-    };
-    let percent = (damaged_stats.hp as f32 / damaged_stats.max_hp as f32 * 100.0) as i32;
+    let mut damaged_stats = CombatStats::new(30, 5, 2);
+    damaged_stats.hp = dungeon_clawler_tui::HitPoints::new(15);
+    let percent = (damaged_stats.hp.value() as f32 / damaged_stats.max_hp.value() as f32 * 100.0) as i32;
     assert_eq!(percent, 50);
 
     // Test at 25% HP
-    let low_hp_stats = CombatStats {
-        hp: 7,
-        max_hp: 30,
-        power: 5,
-        defense: 2,
-    };
-    let percent = (low_hp_stats.hp as f32 / low_hp_stats.max_hp as f32 * 100.0) as i32;
+    let mut low_hp_stats = CombatStats::new(30, 5, 2);
+    low_hp_stats.hp = dungeon_clawler_tui::HitPoints::new(7);
+    let percent = (low_hp_stats.hp.value() as f32 / low_hp_stats.max_hp.value() as f32 * 100.0) as i32;
     assert_eq!(percent, 23);
 }
 
@@ -215,8 +209,8 @@ fn test_equipment_in_inventory_values() {
     let equipable = world.get::<&Equipable>(sword).unwrap();
 
     // Iron sword should have power bonus, no defense
-    assert!(equipable.power_bonus > 0);
-    assert_eq!(equipable.defense_bonus, 0);
+    assert!(equipable.power_bonus.value() > 0);
+    assert_eq!(equipable.defense_bonus.value(), 0);
     assert_eq!(equipable.slot, EquipSlot::MainHand);
 }
 
@@ -228,8 +222,8 @@ fn test_armor_in_inventory_values() {
     let equipable = world.get::<&Equipable>(armor).unwrap();
 
     // Leather armor should have defense bonus, no power
-    assert_eq!(equipable.power_bonus, 0);
-    assert!(equipable.defense_bonus > 0);
+    assert_eq!(equipable.power_bonus.value(), 0);
+    assert!(equipable.defense_bonus.value() > 0);
     assert_eq!(equipable.slot, EquipSlot::Body);
 }
 
@@ -271,30 +265,27 @@ fn test_empty_equipment_slots_are_none() {
 fn test_stats_damage_reduces_hp() {
     let mut stats = CombatStats::new(30, 5, 2);
 
-    let initial_hp = stats.hp;
+    let initial_hp = stats.hp.value();
 
     // Take damage
-    stats.hp -= 10;
+    stats.hp = dungeon_clawler_tui::HitPoints::new(stats.hp.value() - 10);
 
-    assert_eq!(stats.hp, initial_hp - 10);
-    assert_eq!(stats.hp, 20);
-    assert_eq!(stats.max_hp, 30); // Max HP unchanged
+    assert_eq!(stats.hp.value(), initial_hp - 10);
+    assert_eq!(stats.hp.value(), 20);
+    assert_eq!(stats.max_hp.value(), 30); // Max HP unchanged
 }
 
 #[test]
 fn test_stats_healing_capped_at_max() {
-    let mut stats = CombatStats {
-        hp: 20,
-        max_hp: 30,
-        power: 5,
-        defense: 2,
-    };
+    let mut stats = CombatStats::new(30, 5, 2);
+    stats.hp = dungeon_clawler_tui::HitPoints::new(20);
 
     // Heal beyond max
-    stats.hp = (stats.hp + 20).min(stats.max_hp);
+    let new_hp = (stats.hp.value() + 20).min(stats.max_hp.value());
+    stats.hp = dungeon_clawler_tui::HitPoints::new(new_hp);
 
     // Should be capped at max_hp
-    assert_eq!(stats.hp, 30);
+    assert_eq!(stats.hp.value(), 30);
 }
 
 #[test]
@@ -331,8 +322,8 @@ fn test_character_screen_data_completeness() {
 
     // Verify values
     let stats = world.get::<&CombatStats>(player).unwrap();
-    assert_eq!(stats.hp, 30);
-    assert_eq!(stats.max_hp, 30);
+    assert_eq!(stats.hp.value(), 30);
+    assert_eq!(stats.max_hp.value(), 30);
 
     let trimeter = world.get::<&TriMeter>(player).unwrap();
     assert_eq!(trimeter.sanity, 100);

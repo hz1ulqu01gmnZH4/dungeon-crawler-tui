@@ -1,10 +1,11 @@
 use crate::ecs::{
     Position, Renderable, Player, CombatStats, TriMeter, Viewshed,
-    WantsToMove, Name, Monster, BlocksMovement,
+    Name, Monster, BlocksMovement,
 };
 use crate::ecs::resources::Resources;
 use crate::world::{Overmap, Settlement, WorldTime};
 use crate::map::Map;
+use crate::domain_types::Depth;
 use hecs::World;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -29,10 +30,6 @@ struct EntityData {
     tri_meter: Option<TriMeter>,
     viewshed: Option<Viewshed>,
     blocks_movement: Option<BlocksMovement>,
-
-    // Intent components (usually not saved)
-    wants_to_move: Option<WantsToMove>,
-    // Note: WantsToMelee not saved (contains Entity)
 }
 
 /// Complete save game state
@@ -81,7 +78,6 @@ impl SaveGame {
                 tri_meter: world.get::<&TriMeter>(entity).ok().map(|c| *c),
                 viewshed: world.get::<&Viewshed>(entity).ok().map(|v| (*v).clone()),
                 blocks_movement: world.get::<&BlocksMovement>(entity).ok().map(|c| *c),
-                wants_to_move: world.get::<&WantsToMove>(entity).ok().map(|c| *c),
             };
 
             // Track player entity index
@@ -92,19 +88,25 @@ impl SaveGame {
             entities.push(entity_data);
         }
 
+        // Convert HashMap<Depth, Map> to HashMap<i32, Map> for serialization
+        let dungeon_levels: HashMap<i32, Map> = resources.world.dungeon_levels
+            .iter()
+            .map(|(depth, map)| (depth.value(), map.clone()))
+            .collect();
+
         SaveGame {
             version: SAVE_VERSION,
-            overmap: resources.overmap.clone(),
-            settlements: resources.settlements.clone(),
-            world_time: resources.world_time.clone(),
-            player_overmap_pos: resources.player_overmap_pos,
-            current_location: resources.current_location,
-            dungeon_levels: resources.dungeon_levels.clone(),
-            current_depth: resources.current_depth,
+            overmap: resources.world.overmap.clone(),
+            settlements: resources.world.settlements.clone(),
+            world_time: resources.sim.world_time.clone(),
+            player_overmap_pos: resources.world.player_overmap_pos,
+            current_location: resources.world.current_location,
+            dungeon_levels,
+            current_depth: resources.world.current_depth.value(),
             entities,
             player_entity_index,
             seed,
-            message_log: resources.log.messages.clone(),
+            message_log: resources.ui.log.messages.clone(),
         }
     }
 
@@ -118,18 +120,21 @@ impl SaveGame {
         world.clear();
 
         // Restore world state
-        resources.overmap = self.overmap.clone();
-        resources.settlements = self.settlements.clone();
-        resources.world_time = self.world_time.clone();
-        resources.player_overmap_pos = self.player_overmap_pos;
-        resources.current_location = self.current_location;
+        resources.world.overmap = self.overmap.clone();
+        resources.world.settlements = self.settlements.clone();
+        resources.sim.world_time = self.world_time.clone();
+        resources.world.player_overmap_pos = self.player_overmap_pos;
+        resources.world.current_location = self.current_location;
 
-        // Restore dungeon state
-        resources.dungeon_levels = self.dungeon_levels.clone();
-        resources.current_depth = self.current_depth;
+        // Restore dungeon state - convert HashMap<i32, Map> to HashMap<Depth, Map>
+        resources.world.dungeon_levels = self.dungeon_levels
+            .iter()
+            .map(|(depth_val, map)| (Depth(*depth_val), map.clone()))
+            .collect();
+        resources.world.current_depth = Depth(self.current_depth);
 
         // Restore message log
-        resources.log.messages = self.message_log.clone();
+        resources.ui.log.messages = self.message_log.clone();
 
         // Recreate entities
         let mut player_entity = None;
@@ -163,10 +168,6 @@ impl SaveGame {
             if let Some(blocks) = entity_data.blocks_movement {
                 builder.add(blocks);
             }
-            if let Some(wtm) = entity_data.wants_to_move {
-                builder.add(wtm);
-            }
-            // Note: WantsToMelee not loaded (contains Entity, not serializable)
 
             let entity = world.spawn(builder.build());
 
@@ -176,7 +177,7 @@ impl SaveGame {
             }
         }
 
-        resources.player_entity = player_entity;
+        resources.player.player_entity = player_entity;
 
         Ok(())
     }
@@ -224,6 +225,7 @@ pub fn quick_load(world: &mut World, resources: &mut Resources) -> anyhow::Resul
 mod tests {
     use super::*;
     use crate::ecs::resources::RunMode;
+    use crate::domain_types::{Defense, MaxHitPoints, Power};
 
     #[test]
     fn test_save_version() {
@@ -251,7 +253,7 @@ mod tests {
         save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
 
         // Verify restoration
-        assert_eq!(new_resources.player_overmap_pos, (25, 25));
+        assert_eq!(new_resources.world.player_overmap_pos, (25, 25));
     }
 
     #[test]
@@ -309,9 +311,9 @@ mod tests {
             assert_eq!(pos.y, 15);
             assert_eq!(pos.layer, RealityLayer::Normal);
             assert_eq!(name.0, "Player");
-            assert_eq!(stats.max_hp, 30);
-            assert_eq!(stats.power, 5);
-            assert_eq!(stats.defense, 2);
+            assert_eq!(stats.max_hp, MaxHitPoints::new(30));
+            assert_eq!(stats.power, Power::new(5));
+            assert_eq!(stats.defense, Defense::new(2));
         }
         assert!(found_player, "Should find restored player");
     }
@@ -327,14 +329,14 @@ mod tests {
         let mut dungeon_level_1 = Map::new(50, 50);
         let idx = dungeon_level_1.xy_idx(10, 10);
         dungeon_level_1.tiles[idx] = Tile::StairsDown;
-        resources.dungeon_levels.insert(1, dungeon_level_1);
+        resources.world.dungeon_levels.insert(Depth(1), dungeon_level_1);
 
         let mut dungeon_level_2 = Map::new(50, 50);
         let idx = dungeon_level_2.xy_idx(20, 20);
         dungeon_level_2.tiles[idx] = Tile::StairsUp;
-        resources.dungeon_levels.insert(2, dungeon_level_2);
+        resources.world.dungeon_levels.insert(Depth(2), dungeon_level_2);
 
-        resources.current_depth = 2;
+        resources.world.current_depth = Depth(2);
 
         // Save
         let save_game = SaveGame::from_game(&world, &resources, 12345);
@@ -347,15 +349,15 @@ mod tests {
         save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
 
         // Verify dungeon levels restored
-        assert_eq!(new_resources.dungeon_levels.len(), 2, "Should restore 2 dungeon levels");
-        assert_eq!(new_resources.current_depth, 2);
+        assert_eq!(new_resources.world.dungeon_levels.len(), 2, "Should restore 2 dungeon levels");
+        assert_eq!(new_resources.world.current_depth, Depth(2));
 
         // Verify tiles in dungeon levels
-        let level_1 = new_resources.dungeon_levels.get(&1).unwrap();
+        let level_1 = new_resources.world.dungeon_levels.get(&Depth(1)).unwrap();
         let idx = level_1.xy_idx(10, 10);
         assert_eq!(level_1.tiles[idx], Tile::StairsDown);
 
-        let level_2 = new_resources.dungeon_levels.get(&2).unwrap();
+        let level_2 = new_resources.world.dungeon_levels.get(&Depth(2)).unwrap();
         let idx = level_2.xy_idx(20, 20);
         assert_eq!(level_2.tiles[idx], Tile::StairsUp);
     }
@@ -368,9 +370,9 @@ mod tests {
         let mut resources = Resources::new(80, 50, 12345);
 
         // Advance time
-        resources.world_time.advance_minutes(1500); // More than a day
+        resources.sim.world_time.advance_minutes(1500); // More than a day
 
-        let initial_time = resources.world_time.total_minutes();
+        let initial_time = resources.sim.world_time.total_minutes();
 
         // Save and load
         let save_game = SaveGame::from_game(&world, &resources, 12345);
@@ -379,7 +381,7 @@ mod tests {
         save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
 
         // Verify time preserved
-        assert_eq!(new_resources.world_time.total_minutes(), initial_time);
+        assert_eq!(new_resources.sim.world_time.total_minutes(), initial_time);
     }
 
     #[test]
@@ -396,7 +398,7 @@ mod tests {
             Name("Player".to_string()),
         ));
 
-        resources.player_entity = Some(player);
+        resources.player.player_entity = Some(player);
 
         // Save and load
         let save_game = SaveGame::from_game(&world, &resources, 12345);
@@ -421,8 +423,8 @@ mod tests {
         let mut world = World::new();
         let resources = Resources::new(80, 50, 12345);
 
-        assert_eq!(resources.dungeon_levels.len(), 0);
-        assert_eq!(resources.current_depth, 0);
+        assert_eq!(resources.world.dungeon_levels.len(), 0);
+        assert_eq!(resources.world.current_depth, Depth::SURFACE);
 
         let save_game = SaveGame::from_game(&world, &resources, 12345);
         assert_eq!(save_game.dungeon_levels.len(), 0);
@@ -431,8 +433,8 @@ mod tests {
         let mut new_resources = Resources::new(80, 50, 99999);
         save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
 
-        assert_eq!(new_resources.dungeon_levels.len(), 0);
-        assert_eq!(new_resources.current_depth, 0);
+        assert_eq!(new_resources.world.dungeon_levels.len(), 0);
+        assert_eq!(new_resources.world.current_depth, Depth::SURFACE);
     }
 
     #[test]
@@ -463,17 +465,17 @@ mod tests {
         let mut world = World::new();
         let mut resources = Resources::new(80, 50, 12345);
 
-        resources.log.add("Test message 1");
-        resources.log.add("Test message 2");
-        resources.log.add("Test message 3");
+        resources.ui.log.add("Test message 1");
+        resources.ui.log.add("Test message 2");
+        resources.ui.log.add("Test message 3");
 
         let save_game = SaveGame::from_game(&world, &resources, 12345);
         let mut new_world = World::new();
         let mut new_resources = Resources::new(80, 50, 99999);
         save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
 
-        assert_eq!(new_resources.log.messages.len(), 3);
-        assert_eq!(new_resources.log.messages[0], "Test message 1");
-        assert_eq!(new_resources.log.messages[2], "Test message 3");
+        assert_eq!(new_resources.ui.log.messages.len(), 3);
+        assert_eq!(new_resources.ui.log.messages[0], "Test message 1");
+        assert_eq!(new_resources.ui.log.messages[2], "Test message 3");
     }
 }

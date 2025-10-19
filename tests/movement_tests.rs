@@ -170,6 +170,6 @@ fn test_player_stats_maintained_during_movement() {
 
     // Stats should still be valid
     assert_eq!(final_stats.max_hp, initial_stats.max_hp);
-    assert!(final_stats.hp <= final_stats.max_hp);
-    assert!(final_stats.hp > 0);
+    assert!(final_stats.hp.value() <= final_stats.max_hp.value());
+    assert!(final_stats.hp.value() > 0);
 }

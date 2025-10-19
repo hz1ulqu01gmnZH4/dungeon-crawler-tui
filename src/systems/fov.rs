@@ -3,17 +3,17 @@ use crate::ecs::resources::Resources;
 use hecs::World;
 
 pub fn update_fov(world: &mut World, resources: &mut Resources) {
-    let active_layer = resources.maps.active;
-    let player_entity = resources.player_entity;
+    let active_layer = resources.world.maps.active;
+    let player_entity = resources.player.player_entity;
 
     // Calculate visibility modifier based on time of day and weather
-    let time_modifier = resources.world_time.time_of_day().visibility_modifier();
-    let weather_modifier = resources.weather.current_weather.visibility_modifier();
+    let time_modifier = resources.sim.world_time.time_of_day().visibility_modifier();
+    let weather_modifier = resources.sim.weather.current_weather.visibility_modifier();
     let total_modifier = time_modifier + weather_modifier;
 
     // Update viewsheds and collect player visibility
     let mut player_visible = None;
-    let map = resources.maps.active_map();
+    let map = resources.world.maps.active_map();
 
     for (entity, (pos, viewshed)) in world.query_mut::<(&Position, &mut Viewshed)>() {
         if !viewshed.dirty || pos.layer != active_layer {
@@ -35,7 +35,7 @@ pub fn update_fov(world: &mut World, resources: &mut Resources) {
 
     // Update map visibility if player moved
     if let Some(visible) = player_visible {
-        let map = resources.maps.active_map_mut();
+        let map = resources.world.maps.active_map_mut();
         map.clear_visible();
         for (vx, vy) in &visible {
             map.set_visible(*vx, *vy);

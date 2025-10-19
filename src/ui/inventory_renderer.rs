@@ -39,12 +39,19 @@ pub fn render_inventory(frame: &mut Frame, world: &World, resources: &Resources)
         ])
         .split(chunks[1]);
 
+    // Get selection from UI mode
+    let selection = if let crate::ecs::UiMode::Inventory { selection } = resources.ui.ui_mode {
+        selection
+    } else {
+        0 // Default if somehow not in inventory mode
+    };
+
     // Get player inventory
-    if let Some(player_entity) = resources.player_entity {
+    if let Some(player_entity) = resources.player.player_entity {
         if let Ok(inventory) = world.get::<&Inventory>(player_entity) {
-            render_item_list(frame, world, &*inventory, resources.inventory_selection, main_chunks[0]);
+            render_item_list(frame, world, &*inventory, selection, main_chunks[0]);
             render_equipment(frame, world, &*inventory, main_chunks[1]);
-            render_item_details(frame, world, &*inventory, resources.inventory_selection, main_chunks[2]);
+            render_item_details(frame, world, &*inventory, selection, main_chunks[2]);
         }
 
         // Also show player stats in equipment panel
@@ -216,14 +223,14 @@ fn render_item_details(frame: &mut Frame, world: &World, inventory: &Inventory, 
                 Span::raw(equipable.slot.name()),
             ]));
 
-            if equipable.power_bonus != 0 {
+            if equipable.power_bonus.value() != 0 {
                 lines.push(Line::from(vec![
                     Span::styled("Power: ", Style::default().fg(Color::Green)),
                     Span::raw(format!("{:+}", equipable.power_bonus)),
                 ]));
             }
 
-            if equipable.defense_bonus != 0 {
+            if equipable.defense_bonus.value() != 0 {
                 lines.push(Line::from(vec![
                     Span::styled("Defense: ", Style::default().fg(Color::Blue)),
                     Span::raw(format!("{:+}", equipable.defense_bonus)),

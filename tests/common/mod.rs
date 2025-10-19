@@ -12,7 +12,7 @@ use crossterm::event::KeyCode;
 pub struct GameSnapshot {
     pub player_pos: (i32, i32),
     pub time: world::WorldTime,
-    pub in_overmap_mode: bool,
+    pub ui_mode: ecs::resources::UiMode,
     pub current_location: Option<usize>,
     pub player_overmap_pos: (i32, i32),
     pub active_layer: ecs::RealityLayer,
@@ -73,12 +73,7 @@ impl GameTestHarness {
                 visible: Vec::new(),
                 dirty: true,
             },
-            ecs::CombatStats {
-                max_hp: 100,
-                hp: 100,
-                defense: 5,
-                power: 10,
-            },
+            ecs::CombatStats::new(100, 10, 5),
             ecs::TriMeter {
                 sanity: 100,
                 insight: 50,
@@ -152,7 +147,7 @@ impl GameTestHarness {
 
     /// Check if in overmap mode
     pub fn is_in_overmap_mode(&self) -> bool {
-        self.resources.in_overmap_mode
+        matches!(self.resources.ui_mode, ecs::resources::UiMode::Overmap)
     }
 
     /// Get player overmap position
@@ -192,7 +187,7 @@ impl GameTestHarness {
         GameSnapshot {
             player_pos: self.player_position().unwrap_or((0, 0)),
             time: self.current_time().clone(),
-            in_overmap_mode: self.is_in_overmap_mode(),
+            ui_mode: self.resources.ui_mode.clone(),
             current_location: self.current_location(),
             player_overmap_pos: self.player_overmap_position(),
             active_layer: self.current_layer(),
@@ -211,9 +206,9 @@ impl GameTestHarness {
 
         // Player stats are reasonable
         if let Some(stats) = self.get_player_stats() {
-            assert!(stats.hp >= 0, "HP should not be negative");
-            assert!(stats.hp <= stats.max_hp, "HP should not exceed max");
-            assert!(stats.max_hp > 0, "Max HP should be positive");
+            assert!(stats.hp.value() >= 0, "HP should not be negative");
+            assert!(stats.hp.value() <= stats.max_hp.value(), "HP should not exceed max");
+            assert!(stats.max_hp.value() > 0, "Max HP should be positive");
         }
 
         // Time is progressing forward
@@ -288,7 +283,7 @@ impl GameTestHarness {
     pub fn damage_player(&mut self, target_hp: i32) {
         if let Some(player_entity) = self.resources.player_entity {
             if let Ok(mut stats) = self.world.get::<&mut ecs::CombatStats>(player_entity) {
-                stats.hp = target_hp.min(stats.max_hp).max(0);
+                stats.hp = dungeon_clawler_tui::HitPoints::new(target_hp.min(stats.max_hp.value()).max(0));
             }
         }
     }
@@ -331,7 +326,7 @@ mod harness_tests {
         let snapshot = harness.snapshot();
 
         assert_eq!(snapshot.player_pos, harness.player_position().unwrap());
-        assert!(!snapshot.in_overmap_mode);
+        assert!(matches!(snapshot.ui_mode, ecs::resources::UiMode::MainMenu { .. }));
     }
 
     #[test]
@@ -371,7 +366,7 @@ mod harness_tests {
 
         assert!(stats.is_some());
         let stats = stats.unwrap();
-        assert_eq!(stats.hp, 100);
-        assert_eq!(stats.max_hp, 100);
+        assert_eq!(stats.hp.value(), 100);
+        assert_eq!(stats.max_hp.value(), 100);
     }
 }

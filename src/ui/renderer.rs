@@ -70,83 +70,77 @@ fn apply_lighting(color: Color, time_of_day: TimeOfDay, weather_modifier: i32) -
 }
 
 pub fn render(frame: &mut Frame, world: &World, resources: &Resources) {
-    // If in main menu, show main menu
-    if resources.in_main_menu {
-        let save_exists = std::path::Path::new("savegame.json").exists();
-        crate::ui::render_main_menu(frame, resources.menu_selection, save_exists);
-        return;
+    use crate::ecs::UiMode;
+
+    match &resources.ui.ui_mode {
+        UiMode::MainMenu { selection } => {
+            let save_exists = std::path::Path::new("savegame.json").exists();
+            crate::ui::render_main_menu(frame, *selection, save_exists);
+        }
+        UiMode::CharacterScreen => {
+            crate::ui::render_character_screen(frame, world, resources);
+        }
+        UiMode::Inventory { .. } => {
+            crate::ui::render_inventory(frame, world, resources);
+        }
+        UiMode::Overmap => {
+            let renderer = OvermapRenderer::new(80, 40);
+            renderer.render(frame, &resources.world.overmap, &resources.world.settlements, &resources.world.roads, resources.world.player_overmap_pos, frame.area());
+        }
+        UiMode::Examine { .. } => {
+            crate::ui::render_examine_mode(frame, world, resources);
+        }
+        UiMode::InGame => {
+            // Normal gameplay - show map, status, and message log
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(10),      // Map area
+                    Constraint::Length(3),    // Status bar
+                    Constraint::Length(8),    // Message log
+                ])
+                .split(frame.area());
+
+            render_map(frame, chunks[0], world, resources);
+            render_status(frame, chunks[1], world, resources);
+            render_log(frame, chunks[2], resources);
+        }
     }
-
-    // If in character screen mode, show character screen UI
-    if resources.in_character_screen {
-        crate::ui::render_character_screen(frame, world, resources);
-        return;
-    }
-
-    // If in inventory mode, show inventory UI
-    if resources.in_inventory_mode {
-        crate::ui::render_inventory(frame, world, resources);
-        return;
-    }
-
-    // If in overmap mode, show overmap instead
-    if resources.in_overmap_mode {
-        let renderer = OvermapRenderer::new(80, 40);
-        renderer.render(frame, &resources.overmap, &resources.settlements, &resources.roads, resources.player_overmap_pos, frame.area());
-        return;
-    }
-
-    // If in examine mode, show map + examine info panel
-    if resources.in_examine_mode {
-        crate::ui::render_examine_mode(frame, world, resources);
-        // Continue to render map and status, but replace message log with examine info
-    }
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(10),      // Map area
-            Constraint::Length(3),    // Status bar
-            Constraint::Length(8),    // Message log (or examine info in examine mode)
-        ])
-        .split(frame.area());
-
-    render_map(frame, chunks[0], world, resources);
-    render_status(frame, chunks[1], world, resources);
-    render_log(frame, chunks[2], resources);
 }
 
 fn render_map(frame: &mut Frame, area: Rect, world: &World, resources: &Resources) {
+    use crate::ecs::UiMode;
+
     // Get map based on current depth
-    let map = if resources.current_depth > 0 {
+    let map = if resources.world.current_depth.is_dungeon() {
         // In dungeon - get from dungeon_levels
-        if let Some(dungeon_map) = resources.dungeon_levels.get(&resources.current_depth) {
+        if let Some(dungeon_map) = resources.world.dungeon_levels.get(&resources.world.current_depth) {
             dungeon_map
         } else {
             // Fallback to active map if dungeon level doesn't exist
-            resources.maps.active_map()
+            resources.world.maps.active_map()
         }
-    } else if let Some(location_id) = resources.current_location {
+    } else if let Some(location_id) = resources.world.current_location {
         // In settlement - get from settlement_maps
-        if let Some(settlement_map) = resources.settlement_maps.get(&location_id) {
+        if let Some(settlement_map) = resources.world.settlement_maps.get(&location_id) {
             settlement_map
         } else {
-            resources.maps.active_map()
+            resources.world.maps.active_map()
         }
     } else {
         // On surface/wilderness - use active map
-        resources.maps.active_map()
+        resources.world.maps.active_map()
     };
 
-    let active_layer = resources.maps.active;
+    let active_layer = resources.world.maps.active;
 
     // Get lighting conditions
-    let time_of_day = resources.world_time.time_of_day();
-    let weather_modifier = resources.weather.current_weather.visibility_modifier();
+    let time_of_day = resources.sim.world_time.time_of_day();
+    let weather_modifier = resources.sim.weather.current_weather.visibility_modifier();
 
     // Calculate camera bounds
-    let cam_x = resources.camera.x;
-    let cam_y = resources.camera.y;
+    let cam_x = resources.ui.camera.x;
+    let cam_y = resources.ui.camera.y;
     let view_width = area.width.saturating_sub(2) as i32;
     let view_height = area.height.saturating_sub(2) as i32;
 
@@ -210,8 +204,7 @@ fn render_map(frame: &mut Frame, area: Rect, world: &World, resources: &Resource
     }
 
     // Render examine cursor if in examine mode
-    if resources.in_examine_mode {
-        let (cx, cy) = resources.examine_cursor;
+    if let UiMode::Examine { cursor: (cx, cy) } = resources.ui.ui_mode {
         let screen_x = cx - cam_x;
         let screen_y = cy - cam_y;
 
@@ -234,12 +227,12 @@ fn render_map(frame: &mut Frame, area: Rect, world: &World, resources: &Resource
     }
 
     // Build title with location info and depth
-    let title = if resources.current_depth > 0 {
+    let title = if resources.world.current_depth.is_dungeon() {
         // In dungeon
-        format!(" Dungeon - Depth {} [{:?} Layer] ", resources.current_depth, active_layer)
-    } else if let Some(loc_id) = resources.current_location {
+        format!(" Dungeon - Depth {} [{:?} Layer] ", resources.world.current_depth, active_layer)
+    } else if let Some(loc_id) = resources.world.current_location {
         // In settlement
-        if let Some(settlement) = resources.settlements.iter().find(|s| s.id == loc_id) {
+        if let Some(settlement) = resources.world.settlements.iter().find(|s| s.id == loc_id) {
             format!(" {} ({}) [{:?} Layer] ", settlement.name, settlement.settlement_type.name(), active_layer)
         } else {
             format!(" Dungeon Clawler - Surface [{:?} Layer] ", active_layer)
@@ -266,7 +259,7 @@ fn render_status(frame: &mut Frame, area: Rect, world: &World, resources: &Resou
     for (entity, (stats, pos, _)) in world.query::<(&CombatStats, &Position, &Player)>().iter() {
         let tri_meter = world.get::<&TriMeter>(entity).ok().map(|t| *t);
 
-        let hp_bar = create_bar(stats.hp, stats.max_hp, 20);
+        let hp_bar = create_bar(stats.hp.value(), stats.max_hp.value(), 20);
         let mut bars = format!("HP: {} {}/{}", hp_bar, stats.hp, stats.max_hp);
 
         if let Some(tri) = tri_meter {
@@ -280,9 +273,9 @@ fn render_status(frame: &mut Frame, area: Rect, world: &World, resources: &Resou
         }
 
         // Add time and weather info
-        let time_str = resources.world_time.time_string();
-        let tod = resources.world_time.time_of_day().name();
-        let weather = resources.weather.current_weather.name();
+        let time_str = resources.sim.world_time.time_string();
+        let tod = resources.sim.world_time.time_of_day().name();
+        let weather = resources.sim.weather.current_weather.name();
 
         status_text = format!("Pos: ({}, {}) | {} | {} | {} | {}",
             pos.x, pos.y, time_str, tod, weather, bars);
@@ -297,7 +290,7 @@ fn render_status(frame: &mut Frame, area: Rect, world: &World, resources: &Resou
 }
 
 fn render_log(frame: &mut Frame, area: Rect, resources: &Resources) {
-    let messages = resources.log.recent(6);
+    let messages = resources.ui.log.recent(6);
     let text: Vec<Line> = messages.iter().map(|m| Line::from(m.as_str())).collect();
 
     let paragraph = Paragraph::new(text)

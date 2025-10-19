@@ -186,11 +186,11 @@ fn test_camping_restores_hp() {
     harness.tick(1);
 
     // Get max HP and damage player to 50%
-    let max_hp = harness.get_player_stats().unwrap().max_hp;
+    let max_hp = harness.get_player_stats().unwrap().max_hp.value();
     let target_hp = max_hp / 2;
     harness.damage_player(target_hp);
 
-    let damaged_hp = harness.get_player_stats().unwrap().hp;
+    let damaged_hp = harness.get_player_stats().unwrap().hp.value();
     assert!(damaged_hp < max_hp, "Player should be damaged");
 
     // Camp/rest (using 'r' key)
@@ -198,7 +198,7 @@ fn test_camping_restores_hp() {
     harness.tick(1);
 
     // HP should be restored
-    let restored_hp = harness.get_player_stats().unwrap().hp;
+    let restored_hp = harness.get_player_stats().unwrap().hp.value();
     assert!(restored_hp > damaged_hp,
         "Camping should restore HP. Was: {}, Now: {}", damaged_hp, restored_hp);
 }
@@ -216,7 +216,7 @@ fn test_camping_advances_time() {
     harness.tick(1);
 
     // Damage player so camping is allowed
-    let max_hp = harness.get_player_stats().unwrap().max_hp;
+    let max_hp = harness.get_player_stats().unwrap().max_hp.value();
     harness.damage_player(max_hp / 2);
 
     let initial_time = harness.current_time().total_minutes();
@@ -247,7 +247,7 @@ fn test_cannot_rest_at_full_hp() {
 
     // Ensure player is at full HP
     let stats = harness.get_player_stats().unwrap();
-    assert_eq!(stats.hp, stats.max_hp, "Player should start at full HP");
+    assert_eq!(stats.hp.value(), stats.max_hp.value(), "Player should start at full HP");
 
     let initial_time = harness.current_time().total_minutes();
 
@@ -275,7 +275,7 @@ fn test_cannot_rest_in_wilderness() {
 
     // Stay in local map mode (wilderness/dungeon)
     // Damage player
-    let max_hp = harness.get_player_stats().unwrap().max_hp;
+    let max_hp = harness.get_player_stats().unwrap().max_hp.value();
     harness.damage_player(max_hp / 2);
 
     // Try to rest in wilderness

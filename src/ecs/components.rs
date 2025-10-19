@@ -1,5 +1,6 @@
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
+use crate::domain_types::{Defense, HitPoints, MaxHitPoints, Money, Power};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RealityLayer {
@@ -84,19 +85,20 @@ impl Viewshed {
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct CombatStats {
-    pub hp: i32,
-    pub max_hp: i32,
-    pub power: i32,
-    pub defense: i32,
+    pub hp: HitPoints,
+    pub max_hp: MaxHitPoints,
+    pub power: Power,
+    pub defense: Defense,
 }
 
 impl CombatStats {
     pub fn new(hp: i32, power: i32, defense: i32) -> Self {
+        let hp_val = HitPoints::new(hp);
         Self {
-            hp,
-            max_hp: hp,
-            power,
-            defense,
+            hp: hp_val,
+            max_hp: MaxHitPoints::new(hp),
+            power: Power::new(power),
+            defense: Defense::new(defense),
         }
     }
 }
@@ -130,33 +132,6 @@ pub struct Monster;
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct BlocksMovement;
-
-// Intent components
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct WantsToMove {
-    pub dest_x: i32,
-    pub dest_y: i32,
-}
-
-impl WantsToMove {
-    pub fn new(dest_x: i32, dest_y: i32) -> Self {
-        Self { dest_x, dest_y }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct WantsToMelee {
-    pub target: hecs::Entity,
-}
-
-impl WantsToMelee {
-    pub fn new(target: hecs::Entity) -> Self {
-        Self { target }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct WantsToWait;
 
 // ============================================================================
 // Inventory & Items (Phase 2)
@@ -407,7 +382,7 @@ pub struct ItemData {
     pub description: String,        // Short one-line description
     pub detailed_description: String, // Multi-line detailed lore/mechanics
     pub weight: i32,
-    pub value: i32,
+    pub value: Money,
     pub category: ItemCategory,
     pub max_stack: usize,            // Max stack size (1 = non-stackable)
 }
@@ -419,7 +394,7 @@ impl ItemData {
             description: description.into(),
             detailed_description: String::new(), // Legacy: empty detailed description
             weight,
-            value,
+            value: Money::new(value as u32),
             category: ItemCategory::Misc,
             max_stack: 1,
         }
@@ -455,7 +430,7 @@ impl ItemData {
             description: description.into(),
             detailed_description: detailed_description.into(),
             weight,
-            value,
+            value: Money::new(value as u32),
             category,
             max_stack,
         }
@@ -482,24 +457,24 @@ impl Stackable {
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Equipable {
     pub slot: EquipSlot,
-    pub power_bonus: i32,
-    pub defense_bonus: i32,
+    pub power_bonus: Power,
+    pub defense_bonus: Defense,
 }
 
 impl Equipable {
     pub fn new(slot: EquipSlot) -> Self {
         Self {
             slot,
-            power_bonus: 0,
-            defense_bonus: 0,
+            power_bonus: Power::new(0),
+            defense_bonus: Defense::new(0),
         }
     }
 
     pub fn with_bonuses(slot: EquipSlot, power: i32, defense: i32) -> Self {
         Self {
             slot,
-            power_bonus: power,
-            defense_bonus: defense,
+            power_bonus: Power::new(power),
+            defense_bonus: Defense::new(defense),
         }
     }
 }
@@ -519,30 +494,4 @@ impl Consumable {
     pub fn healing_potion() -> Self {
         Self::new(20, 1)
     }
-}
-
-// Intent components for inventory actions
-#[derive(Copy, Clone, Debug)]
-pub struct WantsToPickupItem {
-    pub item: hecs::Entity,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct WantsToDropItem {
-    pub item: hecs::Entity,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct WantsToEquipItem {
-    pub item: hecs::Entity,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct WantsToUnequipItem {
-    pub slot: EquipSlot,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct WantsToUseItem {
-    pub item: hecs::Entity,
 }

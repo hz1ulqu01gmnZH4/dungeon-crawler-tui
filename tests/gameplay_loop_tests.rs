@@ -84,11 +84,7 @@ fn test_travel_and_rest_loop() {
     harness.tick(1);
 
     // Damage player to enable resting
-    if let Some(player_entity) = harness.resources.player_entity {
-        if let Ok(mut stats) = harness.world.get::<&mut dungeon_clawler_tui::ecs::CombatStats>(player_entity) {
-            stats.hp = stats.max_hp / 3;
-        }
-    }
+    harness.damage_player(100 / 3);
 
     let damaged_hp = harness.get_player_stats().unwrap().hp;
 

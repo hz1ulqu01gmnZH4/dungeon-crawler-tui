@@ -43,7 +43,7 @@ impl MinimapRenderer {
             return;
         }
 
-        let map = resources.maps.active_map();
+        let map = resources.world.maps.active_map();
 
         // Calculate the area for the minimap (bottom-right corner by default)
         let minimap_width = self.config.width.min(area.width);
@@ -63,7 +63,7 @@ impl MinimapRenderer {
         // Find player position
         let mut player_pos = None;
         for (_, pos) in world.query::<&Position>().iter() {
-            if pos.layer == resources.maps.active {
+            if pos.layer == resources.world.maps.active {
                 player_pos = Some((pos.x, pos.y));
                 break;
             }

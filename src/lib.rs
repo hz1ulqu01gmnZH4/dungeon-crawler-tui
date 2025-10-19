@@ -6,6 +6,8 @@ pub mod systems;
 pub mod ui;
 pub mod save;
 pub mod perf;
+pub mod domain_types;
+pub mod sim;
 
 // Re-export commonly used items
 pub use ecs::*;
@@ -15,3 +17,5 @@ pub use systems::*;
 pub use ui::*;
 pub use save::*;
 pub use perf::*;
+pub use domain_types::*;
+pub use sim::*;

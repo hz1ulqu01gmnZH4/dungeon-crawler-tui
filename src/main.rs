@@ -48,8 +48,8 @@ fn create_game_world(seed: u64) -> (World, Resources) {
 
     // Generate dungeon
     let rooms = generate_dungeon(
-        resources.maps.active_map_mut(),
-        &mut resources.rng,
+        resources.world.maps.active_map_mut(),
+        &mut resources.sim.rng,
         30,  // max_rooms
         5,   // min_size
         10,  // max_size
@@ -75,11 +75,11 @@ fn create_game_world(seed: u64) -> (World, Resources) {
             Inventory::default_player(),
         ));
 
-        resources.player_entity = Some(player);
-        resources.camera.center_on(px, py);
-        resources.log.add("Welcome to the Dungeon Clawler!");
-        resources.log.add("Use hjkl or arrow keys to move. Press 'q' to quit.");
-        resources.log.add("Press 'g' to pickup items, 'i' for inventory, 'S' to save.");
+        resources.player.player_entity = Some(player);
+        resources.ui.camera.center_on(px, py);
+        resources.ui.log.add("Welcome to the Dungeon Clawler!");
+        resources.ui.log.add("Use hjkl or arrow keys to move. Press 'q' to quit.");
+        resources.ui.log.add("Press 'g' to pickup items, 'i' for inventory, 'S' to save.");
     }
 
     // Spawn monsters and items in other rooms
@@ -118,7 +118,7 @@ fn create_game_world(seed: u64) -> (World, Resources) {
                 room_tiles.push((x, y));
             }
         }
-        dungeon_clawler_tui::spawn_items_in_room(&mut world, &room_tiles, &mut resources.rng);
+        dungeon_clawler_tui::spawn_items_in_room(&mut world, &room_tiles, &mut resources.sim.rng);
     }
 
     (world, resources)

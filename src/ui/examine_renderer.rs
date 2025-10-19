@@ -29,18 +29,22 @@ pub fn render_examine_mode(frame: &mut Frame, world: &World, resources: &Resourc
 }
 
 fn render_examine_info(frame: &mut Frame, world: &World, resources: &Resources, area: Rect) {
-    let (cx, cy) = resources.examine_cursor;
+    let (cx, cy) = if let crate::ecs::UiMode::Examine { cursor } = resources.ui.ui_mode {
+        cursor
+    } else {
+        (0, 0) // Default if somehow not in examine mode
+    };
 
     // Get the map based on current depth
-    let map = if resources.current_depth > 0 {
+    let map = if resources.world.current_depth.is_dungeon() {
         // In dungeon
-        resources.dungeon_levels.get(&resources.current_depth)
-    } else if let Some(location_id) = resources.current_location {
+        resources.world.dungeon_levels.get(&resources.world.current_depth)
+    } else if let Some(location_id) = resources.world.current_location {
         // In settlement
-        resources.settlement_maps.get(&location_id)
+        resources.world.settlement_maps.get(&location_id)
     } else {
         // On surface/wilderness
-        Some(resources.maps.active_map())
+        Some(resources.world.maps.active_map())
     };
 
     let mut info_lines = Vec::new();
