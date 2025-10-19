@@ -1,6 +1,6 @@
 use crate::ecs::{
     Position, Renderable, Player, CombatStats, TriMeter, Viewshed,
-    Name, Monster, BlocksMovement,
+    Name, Monster, BlocksMovement, Uid,
 };
 use crate::ecs::resources::Resources;
 use crate::world::{Overmap, Settlement, WorldTime};
@@ -9,8 +9,12 @@ use crate::domain_types::Depth;
 use hecs::World;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, File};
+use std::io::{Read, Write};
 use std::path::Path;
+use flate2::Compression;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
 
 /// Version for save file compatibility
 const SAVE_VERSION: u32 = 2;
@@ -18,6 +22,9 @@ const SAVE_VERSION: u32 = 2;
 /// Serializable entity data
 #[derive(Serialize, Deserialize)]
 struct EntityData {
+    // Unique identifier
+    uid: Uid,
+
     // Required components
     position: Option<Position>,
     renderable: Option<Renderable>,
@@ -68,7 +75,12 @@ impl SaveGame {
         // Serialize all entities
         for (idx, entity_ref) in world.iter().enumerate() {
             let entity = entity_ref.entity();
+
+            // Get or create Uid for this entity
+            let uid = world.get::<&Uid>(entity).ok().map(|u| *u).unwrap_or_else(|| Uid::new());
+
             let entity_data = EntityData {
+                uid,
                 position: world.get::<&Position>(entity).ok().map(|c| *c),
                 renderable: world.get::<&Renderable>(entity).ok().map(|c| *c),
                 name: world.get::<&Name>(entity).ok().map(|n| n.0.clone()),
@@ -154,6 +166,9 @@ impl SaveGame {
         for (idx, entity_data) in self.entities.iter().enumerate() {
             let mut builder = hecs::EntityBuilder::new();
 
+            // Restore Uid and ensure counter is updated
+            builder.add(Uid::from_raw(entity_data.uid.0));
+
             if let Some(pos) = entity_data.position {
                 builder.add(pos);
             }
@@ -195,14 +210,24 @@ impl SaveGame {
         Ok(())
     }
 
-    /// Save game to file
+    /// Save game to file (uncompressed JSON)
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
         let json = serde_json::to_string_pretty(self)?;
         fs::write(path, json)?;
         Ok(())
     }
 
-    /// Load game from file
+    /// Save game to file with gzip compression
+    pub fn save_to_file_compressed<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
+        let json = serde_json::to_string(self)?;
+        let file = File::create(path)?;
+        let mut encoder = GzEncoder::new(file, Compression::best());
+        encoder.write_all(json.as_bytes())?;
+        encoder.finish()?;
+        Ok(())
+    }
+
+    /// Load game from file (uncompressed JSON)
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let json = fs::read_to_string(path)?;
         let save_game: SaveGame = serde_json::from_str(&json)?;
@@ -217,6 +242,41 @@ impl SaveGame {
         }
 
         Ok(save_game)
+    }
+
+    /// Load game from compressed file
+    pub fn load_from_file_compressed<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+        let file = File::open(path)?;
+        let mut decoder = GzDecoder::new(file);
+        let mut json = String::new();
+        decoder.read_to_string(&mut json)?;
+        let save_game: SaveGame = serde_json::from_str(&json)?;
+
+        // Version check
+        if save_game.version != SAVE_VERSION {
+            return Err(anyhow::anyhow!(
+                "Save file version mismatch: expected {}, found {}",
+                SAVE_VERSION,
+                save_game.version
+            ));
+        }
+
+        Ok(save_game)
+    }
+
+    /// Get the size of the save data in bytes (uncompressed)
+    pub fn uncompressed_size(&self) -> anyhow::Result<usize> {
+        let json = serde_json::to_string(self)?;
+        Ok(json.len())
+    }
+
+    /// Get the size of the save data in bytes (compressed)
+    pub fn compressed_size(&self) -> anyhow::Result<usize> {
+        let json = serde_json::to_string(self)?;
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::best());
+        encoder.write_all(json.as_bytes())?;
+        let compressed = encoder.finish()?;
+        Ok(compressed.len())
     }
 }
 
@@ -490,5 +550,72 @@ mod tests {
         assert_eq!(new_resources.ui.log.messages.len(), 3);
         assert_eq!(new_resources.ui.log.messages[0], "Test message 1");
         assert_eq!(new_resources.ui.log.messages[2], "Test message 3");
+    }
+
+    #[test]
+    fn test_compressed_save_load() {
+        use std::fs;
+
+        let mut world = World::new();
+        let resources = Resources::new(80, 50, 12345);
+
+        // Save to compressed file
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+        save_game.save_to_file_compressed("test_save.gz").unwrap();
+
+        // Verify file exists
+        assert!(std::path::Path::new("test_save.gz").exists());
+
+        // Load from compressed file
+        let loaded = SaveGame::load_from_file_compressed("test_save.gz").unwrap();
+        assert_eq!(loaded.version, SAVE_VERSION);
+        assert_eq!(loaded.seed, 12345);
+
+        // Cleanup
+        let _ = fs::remove_file("test_save.gz");
+    }
+
+    #[test]
+    fn test_compression_ratio() {
+        use crate::ecs::{Player, Position, Renderable, Name, CombatStats, Monster, RealityLayer};
+
+        let mut world = World::new();
+        let mut resources = Resources::new(80, 50, 12345);
+
+        // Create a more complex game state to test compression
+        for i in 0..50 {
+            world.spawn((
+                Monster,
+                Position::new(i * 2, i * 3, RealityLayer::Normal),
+                Renderable {
+                    glyph: 'g',
+                    fg: ratatui::style::Color::Green,
+                    bg: ratatui::style::Color::Reset,
+                    z: 5,
+                },
+                Name(format!("Goblin {}", i)),
+                CombatStats::new(10, 3, 1),
+            ));
+        }
+
+        // Add some log messages
+        for i in 0..20 {
+            resources.ui.log.add(format!("Message number {}", i));
+        }
+
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+
+        let uncompressed = save_game.uncompressed_size().unwrap();
+        let compressed = save_game.compressed_size().unwrap();
+
+        // Compression should provide meaningful reduction
+        println!("Uncompressed: {} bytes", uncompressed);
+        println!("Compressed: {} bytes", compressed);
+        println!("Compression ratio: {:.2}%", (compressed as f64 / uncompressed as f64) * 100.0);
+
+        // Verify compression achieves at least some reduction
+        assert!(compressed < uncompressed);
+        // With JSON and repetitive game data, we should get at least 30% compression
+        assert!(compressed < uncompressed * 70 / 100);
     }
 }

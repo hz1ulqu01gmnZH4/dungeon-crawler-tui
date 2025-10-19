@@ -1,6 +1,50 @@
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 use crate::domain_types::{Defense, HitPoints, MaxHitPoints, Money, Power};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Unique identifier for entities, persists across save/load
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Uid(pub u64);
+
+static NEXT_UID: AtomicU64 = AtomicU64::new(1);
+
+impl Uid {
+    /// Generate a new unique ID
+    pub fn new() -> Self {
+        Uid(NEXT_UID.fetch_add(1, Ordering::Relaxed))
+    }
+
+    /// Create a Uid from a raw value (used during deserialization)
+    pub fn from_raw(value: u64) -> Self {
+        // Update the counter if this ID is higher than current
+        let mut current = NEXT_UID.load(Ordering::Relaxed);
+        while value >= current {
+            match NEXT_UID.compare_exchange_weak(
+                current,
+                value + 1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(c) => current = c,
+            }
+        }
+        Uid(value)
+    }
+
+    /// Reset the UID counter (useful for testing)
+    #[cfg(test)]
+    pub fn reset_counter() {
+        NEXT_UID.store(1, Ordering::Relaxed);
+    }
+}
+
+impl Default for Uid {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RealityLayer {
@@ -493,5 +537,52 @@ impl Consumable {
 
     pub fn healing_potion() -> Self {
         Self::new(20, 1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_uid_creation() {
+        Uid::reset_counter();
+        let uid1 = Uid::new();
+        let uid2 = Uid::new();
+        let uid3 = Uid::new();
+
+        assert_eq!(uid1.0, 1);
+        assert_eq!(uid2.0, 2);
+        assert_eq!(uid3.0, 3);
+        assert_ne!(uid1, uid2);
+    }
+
+    #[test]
+    fn test_uid_from_raw() {
+        Uid::reset_counter();
+        let uid1 = Uid::from_raw(100);
+        assert_eq!(uid1.0, 100);
+
+        // Next UID should be 101 or higher
+        let uid2 = Uid::new();
+        assert!(uid2.0 >= 101);
+    }
+
+    #[test]
+    fn test_uid_default() {
+        let uid1: Uid = Default::default();
+        let uid2: Uid = Default::default();
+        // UIDs should be unique and sequential
+        assert_ne!(uid1, uid2);
+        assert_eq!(uid2.0, uid1.0 + 1);
+    }
+
+    #[test]
+    fn test_uid_serialization() {
+        Uid::reset_counter();
+        let uid = Uid::new();
+        let serialized = serde_json::to_string(&uid).unwrap();
+        let deserialized: Uid = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(uid, deserialized);
     }
 }
