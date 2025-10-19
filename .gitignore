@@ -33,4 +33,4 @@ docs/research/
 *.fdb_latexmk
 
 # Generated images
-docs/tex/generated_images/
+docs/tex/generated_images/cache/cache.db
