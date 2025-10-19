@@ -98,3 +98,29 @@ fn apply_vertical_tunnel(map: &mut Map, y1: i32, y2: i32, x: i32) {
         }
     }
 }
+
+/// Generate a dungeon level with stairs up and down
+pub fn generate_dungeon_level(width: i32, height: i32, rng: &mut impl Rng) -> Map {
+    let mut map = Map::new(width, height);
+
+    // Generate dungeon rooms and corridors
+    let rooms = generate_dungeon(&mut map, rng, 30, 6, 10);
+
+    if rooms.is_empty() {
+        return map; // No rooms generated, return empty map
+    }
+
+    // Place stairs up in first room (where player enters)
+    let (stairs_up_x, stairs_up_y) = rooms[0].center();
+    let stairs_up_idx = map.xy_idx(stairs_up_x, stairs_up_y);
+    map.tiles[stairs_up_idx] = Tile::StairsUp;
+
+    // Place stairs down in last room (deeper descent)
+    if rooms.len() > 1 {
+        let (stairs_down_x, stairs_down_y) = rooms[rooms.len() - 1].center();
+        let stairs_down_idx = map.xy_idx(stairs_down_x, stairs_down_y);
+        map.tiles[stairs_down_idx] = Tile::StairsDown;
+    }
+
+    map
+}

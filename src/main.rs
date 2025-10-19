@@ -72,15 +72,17 @@ fn create_game_world(seed: u64) -> (World, Resources) {
             TriMeter::new(),
             Viewshed::new(8),
             BlocksMovement,
+            Inventory::default_player(),
         ));
 
         resources.player_entity = Some(player);
         resources.camera.center_on(px, py);
         resources.log.add("Welcome to the Dungeon Clawler!");
         resources.log.add("Use hjkl or arrow keys to move. Press 'q' to quit.");
+        resources.log.add("Press 'g' to pickup items, 'i' for inventory, 'S' to save.");
     }
 
-    // Spawn monsters in other rooms
+    // Spawn monsters and items in other rooms
     for room in rooms.iter().skip(1) {
         let (mx, my) = room.center();
 
@@ -108,6 +110,15 @@ fn create_game_world(seed: u64) -> (World, Resources) {
                 BlocksMovement,
             ));
         }
+
+        // Spawn items in room
+        let mut room_tiles = Vec::new();
+        for y in room.y1 + 1..room.y2 {
+            for x in room.x1 + 1..room.x2 {
+                room_tiles.push((x, y));
+            }
+        }
+        dungeon_clawler_tui::spawn_items_in_room(&mut world, &room_tiles, &mut resources.rng);
     }
 
     (world, resources)

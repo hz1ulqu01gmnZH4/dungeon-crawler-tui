@@ -74,7 +74,7 @@ impl TimeOfDay {
 }
 
 /// World time tracking year, season, day, hour, minute
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldTime {
     pub year: i32,
     pub day_of_year: i32, // 1-360

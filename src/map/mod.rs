@@ -1,14 +1,17 @@
 pub mod tile;
 pub mod generator;
 pub mod fov;
+pub mod chunks;
 
 pub use tile::*;
 pub use generator::*;
 pub use self::fov::*;
+pub use chunks::*;
 
 use crate::ecs::RealityLayer;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Map {
     pub width: i32,
     pub height: i32,

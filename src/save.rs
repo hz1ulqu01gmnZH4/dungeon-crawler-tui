@@ -4,13 +4,15 @@ use crate::ecs::{
 };
 use crate::ecs::resources::Resources;
 use crate::world::{Overmap, Settlement, WorldTime};
+use crate::map::Map;
 use hecs::World;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
 /// Version for save file compatibility
-const SAVE_VERSION: u32 = 1;
+const SAVE_VERSION: u32 = 2;
 
 /// Serializable entity data
 #[derive(Serialize, Deserialize)]
@@ -46,6 +48,10 @@ pub struct SaveGame {
     // Player state
     player_overmap_pos: (i32, i32),
     current_location: Option<usize>,
+
+    // Dungeon state
+    dungeon_levels: HashMap<i32, Map>,
+    current_depth: i32,
 
     // ECS state
     entities: Vec<EntityData>,
@@ -93,6 +99,8 @@ impl SaveGame {
             world_time: resources.world_time.clone(),
             player_overmap_pos: resources.player_overmap_pos,
             current_location: resources.current_location,
+            dungeon_levels: resources.dungeon_levels.clone(),
+            current_depth: resources.current_depth,
             entities,
             player_entity_index,
             seed,
@@ -115,6 +123,10 @@ impl SaveGame {
         resources.world_time = self.world_time.clone();
         resources.player_overmap_pos = self.player_overmap_pos;
         resources.current_location = self.current_location;
+
+        // Restore dungeon state
+        resources.dungeon_levels = self.dungeon_levels.clone();
+        resources.current_depth = self.current_depth;
 
         // Restore message log
         resources.log.messages = self.message_log.clone();
@@ -215,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_save_version() {
-        assert_eq!(SAVE_VERSION, 1);
+        assert_eq!(SAVE_VERSION, 2);
     }
 
     #[test]
@@ -240,5 +252,228 @@ mod tests {
 
         // Verify restoration
         assert_eq!(new_resources.player_overmap_pos, (25, 25));
+    }
+
+    #[test]
+    fn test_save_load_entities() {
+        use crate::ecs::{Player, Position, Renderable, Name, CombatStats, RealityLayer};
+
+        let mut world = World::new();
+        let resources = Resources::new(80, 50, 12345);
+
+        // Spawn player entity with multiple components
+        let player = world.spawn((
+            Player,
+            Position::new(10, 15, RealityLayer::Normal),
+            Renderable {
+                glyph: '@',
+                fg: ratatui::style::Color::Yellow,
+                bg: ratatui::style::Color::Reset,
+                z: 10,
+            },
+            Name("Player".to_string()),
+            CombatStats::new(30, 5, 2),
+        ));
+
+        // Spawn monster
+        let monster = world.spawn((
+            Position::new(5, 5, RealityLayer::Normal),
+            Renderable {
+                glyph: 'g',
+                fg: ratatui::style::Color::Red,
+                bg: ratatui::style::Color::Reset,
+                z: 5,
+            },
+            Name("Goblin".to_string()),
+            CombatStats::new(10, 3, 1),
+        ));
+
+        // Save
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+        assert_eq!(save_game.entities.len(), 2, "Should save 2 entities");
+
+        // Load into new world
+        let mut new_world = World::new();
+        let mut new_resources = Resources::new(80, 50, 99999);
+        save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
+
+        // Verify entity count
+        let entity_count = new_world.iter().count();
+        assert_eq!(entity_count, 2, "Should restore 2 entities");
+
+        // Verify player exists and has correct components
+        let mut found_player = false;
+        for (_, (player_tag, pos, name, stats)) in new_world.query::<(&Player, &Position, &Name, &CombatStats)>().iter() {
+            found_player = true;
+            assert_eq!(pos.x, 10);
+            assert_eq!(pos.y, 15);
+            assert_eq!(pos.layer, RealityLayer::Normal);
+            assert_eq!(name.0, "Player");
+            assert_eq!(stats.max_hp, 30);
+            assert_eq!(stats.power, 5);
+            assert_eq!(stats.defense, 2);
+        }
+        assert!(found_player, "Should find restored player");
+    }
+
+    #[test]
+    fn test_save_load_dungeon_levels() {
+        use crate::map::{Map, Tile};
+
+        let mut world = World::new();
+        let mut resources = Resources::new(80, 50, 12345);
+
+        // Create and add some dungeon levels
+        let mut dungeon_level_1 = Map::new(50, 50);
+        let idx = dungeon_level_1.xy_idx(10, 10);
+        dungeon_level_1.tiles[idx] = Tile::StairsDown;
+        resources.dungeon_levels.insert(1, dungeon_level_1);
+
+        let mut dungeon_level_2 = Map::new(50, 50);
+        let idx = dungeon_level_2.xy_idx(20, 20);
+        dungeon_level_2.tiles[idx] = Tile::StairsUp;
+        resources.dungeon_levels.insert(2, dungeon_level_2);
+
+        resources.current_depth = 2;
+
+        // Save
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+        assert_eq!(save_game.dungeon_levels.len(), 2, "Should save 2 dungeon levels");
+        assert_eq!(save_game.current_depth, 2);
+
+        // Load
+        let mut new_world = World::new();
+        let mut new_resources = Resources::new(80, 50, 99999);
+        save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
+
+        // Verify dungeon levels restored
+        assert_eq!(new_resources.dungeon_levels.len(), 2, "Should restore 2 dungeon levels");
+        assert_eq!(new_resources.current_depth, 2);
+
+        // Verify tiles in dungeon levels
+        let level_1 = new_resources.dungeon_levels.get(&1).unwrap();
+        let idx = level_1.xy_idx(10, 10);
+        assert_eq!(level_1.tiles[idx], Tile::StairsDown);
+
+        let level_2 = new_resources.dungeon_levels.get(&2).unwrap();
+        let idx = level_2.xy_idx(20, 20);
+        assert_eq!(level_2.tiles[idx], Tile::StairsUp);
+    }
+
+    #[test]
+    fn test_save_load_world_time() {
+        use crate::world::WorldTime;
+
+        let mut world = World::new();
+        let mut resources = Resources::new(80, 50, 12345);
+
+        // Advance time
+        resources.world_time.advance_minutes(1500); // More than a day
+
+        let initial_time = resources.world_time.total_minutes();
+
+        // Save and load
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+        let mut new_world = World::new();
+        let mut new_resources = Resources::new(80, 50, 99999);
+        save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
+
+        // Verify time preserved
+        assert_eq!(new_resources.world_time.total_minutes(), initial_time);
+    }
+
+    #[test]
+    fn test_save_load_player_position() {
+        use crate::ecs::{Player, Position, Name, RealityLayer};
+
+        let mut world = World::new();
+        let mut resources = Resources::new(80, 50, 12345);
+
+        // Spawn player at specific position
+        let player = world.spawn((
+            Player,
+            Position::new(42, 73, RealityLayer::Cosmic),
+            Name("Player".to_string()),
+        ));
+
+        resources.player_entity = Some(player);
+
+        // Save and load
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+        let mut new_world = World::new();
+        let mut new_resources = Resources::new(80, 50, 99999);
+        save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
+
+        // Find player and verify position
+        let mut found = false;
+        for (_, (_, pos)) in new_world.query::<(&Player, &Position)>().iter() {
+            assert_eq!(pos.x, 42);
+            assert_eq!(pos.y, 73);
+            assert_eq!(pos.layer, RealityLayer::Cosmic);
+            found = true;
+        }
+        assert!(found, "Player should be restored");
+    }
+
+    #[test]
+    fn test_save_load_empty_dungeon_levels() {
+        // Test with no dungeon levels (surface only)
+        let mut world = World::new();
+        let resources = Resources::new(80, 50, 12345);
+
+        assert_eq!(resources.dungeon_levels.len(), 0);
+        assert_eq!(resources.current_depth, 0);
+
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+        assert_eq!(save_game.dungeon_levels.len(), 0);
+
+        let mut new_world = World::new();
+        let mut new_resources = Resources::new(80, 50, 99999);
+        save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
+
+        assert_eq!(new_resources.dungeon_levels.len(), 0);
+        assert_eq!(new_resources.current_depth, 0);
+    }
+
+    #[test]
+    fn test_save_load_file_io() {
+        use std::fs;
+
+        let mut world = World::new();
+        let resources = Resources::new(80, 50, 12345);
+
+        // Save to file
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+        save_game.save_to_file("test_save.json").unwrap();
+
+        // Verify file exists
+        assert!(std::path::Path::new("test_save.json").exists());
+
+        // Load from file
+        let loaded = SaveGame::load_from_file("test_save.json").unwrap();
+        assert_eq!(loaded.version, SAVE_VERSION);
+        assert_eq!(loaded.seed, 12345);
+
+        // Cleanup
+        let _ = fs::remove_file("test_save.json");
+    }
+
+    #[test]
+    fn test_save_load_message_log() {
+        let mut world = World::new();
+        let mut resources = Resources::new(80, 50, 12345);
+
+        resources.log.add("Test message 1");
+        resources.log.add("Test message 2");
+        resources.log.add("Test message 3");
+
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+        let mut new_world = World::new();
+        let mut new_resources = Resources::new(80, 50, 99999);
+        save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
+
+        assert_eq!(new_resources.log.messages.len(), 3);
+        assert_eq!(new_resources.log.messages[0], "Test message 1");
+        assert_eq!(new_resources.log.messages[2], "Test message 3");
     }
 }

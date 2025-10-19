@@ -1,4 +1,4 @@
-use crate::world::{Overmap, TerrainType, Settlement};
+use crate::world::{Overmap, TerrainType, Settlement, Road};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -6,6 +6,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Widget},
 };
+use std::collections::HashMap;
 
 pub struct OvermapRenderer {
     viewport_width: i32,
@@ -26,6 +27,7 @@ impl OvermapRenderer {
         frame: &mut ratatui::Frame,
         overmap: &Overmap,
         settlements: &[Settlement],
+        roads: &[Road],
         player_pos: (i32, i32),
         area: Rect,
     ) {
@@ -39,7 +41,7 @@ impl OvermapRenderer {
             .split(area);
 
         // Render map
-        self.render_map(frame, overmap, player_pos, chunks[0]);
+        self.render_map(frame, overmap, roads, player_pos, chunks[0]);
 
         // Render legend with settlement info if player is on one
         self.render_legend(frame, settlements, player_pos, chunks[1]);
@@ -52,6 +54,7 @@ impl OvermapRenderer {
         &self,
         frame: &mut ratatui::Frame,
         overmap: &Overmap,
+        roads: &[Road],
         player_pos: (i32, i32),
         area: Rect,
     ) {
@@ -62,6 +65,14 @@ impl OvermapRenderer {
 
         let inner_area = block.inner(area);
         frame.render_widget(block, area);
+
+        // Build road lookup map for quick access
+        let mut road_map = HashMap::new();
+        for road in roads {
+            for &(x, y) in &road.tiles {
+                road_map.insert((x, y), road.road_type);
+            }
+        }
 
         // Calculate viewport bounds centered on player
         let (player_x, player_y) = player_pos;
@@ -84,9 +95,20 @@ impl OvermapRenderer {
                     ('@', Color::Yellow)
                 } else if let Some(tile) = overmap.get_tile(world_x, world_y) {
                     if tile.discovered {
-                        let terrain_glyph = tile.terrain.glyph();
-                        let terrain_color = Self::terrain_color(&tile.terrain, tile.visited);
-                        (terrain_glyph, terrain_color)
+                        // Check if there's a road here
+                        if let Some(&road_type) = road_map.get(&(world_x, world_y)) {
+                            let road_glyph = road_type.glyph();
+                            let road_color = match road_type {
+                                crate::world::RoadType::KingRoad => Color::Rgb(255, 215, 0), // Gold
+                                crate::world::RoadType::TradeRoute => Color::Rgb(210, 180, 140), // Tan
+                                crate::world::RoadType::Path => Color::Rgb(180, 160, 120), // Light brown
+                            };
+                            (road_glyph, road_color)
+                        } else {
+                            let terrain_glyph = tile.terrain.glyph();
+                            let terrain_color = Self::terrain_color(&tile.terrain, tile.visited);
+                            (terrain_glyph, terrain_color)
+                        }
                     } else {
                         // Undiscovered tile
                         (' ', Color::Black)

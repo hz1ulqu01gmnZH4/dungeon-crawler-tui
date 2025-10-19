@@ -6,6 +6,11 @@ pub fn update_fov(world: &mut World, resources: &mut Resources) {
     let active_layer = resources.maps.active;
     let player_entity = resources.player_entity;
 
+    // Calculate visibility modifier based on time of day and weather
+    let time_modifier = resources.world_time.time_of_day().visibility_modifier();
+    let weather_modifier = resources.weather.current_weather.visibility_modifier();
+    let total_modifier = time_modifier + weather_modifier;
+
     // Update viewsheds and collect player visibility
     let mut player_visible = None;
     let map = resources.maps.active_map();
@@ -17,7 +22,10 @@ pub fn update_fov(world: &mut World, resources: &mut Resources) {
 
         viewshed.dirty = false;
         viewshed.visible.clear();
-        viewshed.visible = crate::map::compute_fov(map, pos.x, pos.y, viewshed.range);
+
+        // Apply lighting modifiers to FOV range (minimum 3 tiles visibility)
+        let effective_range = (viewshed.range + total_modifier).max(3);
+        viewshed.visible = crate::map::compute_fov(map, pos.x, pos.y, effective_range);
 
         // Check if this is the player using the stored player entity
         if player_entity == Some(entity) {

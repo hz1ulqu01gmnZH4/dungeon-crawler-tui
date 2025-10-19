@@ -1,6 +1,7 @@
 use crate::ecs::{Position, Renderable, Player, CombatStats, TriMeter};
 use crate::ecs::resources::Resources;
-use crate::ui::OvermapRenderer;
+use crate::ui::{OvermapRenderer, MinimapRenderer, MinimapConfig};
+use crate::world::TimeOfDay;
 use hecs::World;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -10,19 +11,103 @@ use ratatui::{
     Frame,
 };
 
+/// Darken a color based on time of day and weather conditions
+fn apply_lighting(color: Color, time_of_day: TimeOfDay, weather_modifier: i32) -> Color {
+    // Calculate darkness level (0.0 = pitch black, 1.0 = full brightness)
+    let time_brightness = match time_of_day {
+        TimeOfDay::Day => 1.0,
+        TimeOfDay::Dawn | TimeOfDay::Dusk => 0.7,
+        TimeOfDay::Night => 0.4,
+        TimeOfDay::DeepNight => 0.3,
+    };
+
+    // Weather reduces brightness further (each -1 modifier = -5% brightness)
+    let weather_brightness = 1.0 + (weather_modifier as f32 * 0.05);
+    let total_brightness = (time_brightness * weather_brightness).max(0.2); // Minimum 20% visibility
+
+    match color {
+        Color::Rgb(r, g, b) => {
+            let r_dark = (r as f32 * total_brightness) as u8;
+            let g_dark = (g as f32 * total_brightness) as u8;
+            let b_dark = (b as f32 * total_brightness) as u8;
+            Color::Rgb(r_dark, g_dark, b_dark)
+        }
+        Color::Black => Color::Black,
+        Color::DarkGray => {
+            if total_brightness < 0.5 { Color::Black } else { Color::DarkGray }
+        }
+        Color::Gray => {
+            if total_brightness < 0.4 { Color::Black }
+            else if total_brightness < 0.7 { Color::DarkGray }
+            else { Color::Gray }
+        }
+        Color::White => {
+            if total_brightness < 0.4 { Color::DarkGray }
+            else if total_brightness < 0.7 { Color::Gray }
+            else { Color::White }
+        }
+        Color::Red => {
+            if total_brightness < 0.5 { Color::DarkGray } else { Color::Red }
+        }
+        Color::Green => {
+            if total_brightness < 0.5 { Color::DarkGray } else { Color::Green }
+        }
+        Color::Yellow => {
+            if total_brightness < 0.5 { Color::Gray } else { Color::Yellow }
+        }
+        Color::Blue => {
+            if total_brightness < 0.5 { Color::DarkGray } else { Color::Blue }
+        }
+        Color::Magenta => {
+            if total_brightness < 0.5 { Color::DarkGray } else { Color::Magenta }
+        }
+        Color::Cyan => {
+            if total_brightness < 0.5 { Color::DarkGray } else { Color::Cyan }
+        }
+        // Leave other colors unchanged
+        _ => color,
+    }
+}
+
 pub fn render(frame: &mut Frame, world: &World, resources: &Resources) {
+    // If in main menu, show main menu
+    if resources.in_main_menu {
+        let save_exists = std::path::Path::new("savegame.json").exists();
+        crate::ui::render_main_menu(frame, resources.menu_selection, save_exists);
+        return;
+    }
+
+    // If in character screen mode, show character screen UI
+    if resources.in_character_screen {
+        crate::ui::render_character_screen(frame, world, resources);
+        return;
+    }
+
+    // If in inventory mode, show inventory UI
+    if resources.in_inventory_mode {
+        crate::ui::render_inventory(frame, world, resources);
+        return;
+    }
+
     // If in overmap mode, show overmap instead
     if resources.in_overmap_mode {
         let renderer = OvermapRenderer::new(80, 40);
-        renderer.render(frame, &resources.overmap, &resources.settlements, resources.player_overmap_pos, frame.area());
+        renderer.render(frame, &resources.overmap, &resources.settlements, &resources.roads, resources.player_overmap_pos, frame.area());
         return;
     }
+
+    // If in examine mode, show map + examine info panel
+    if resources.in_examine_mode {
+        crate::ui::render_examine_mode(frame, world, resources);
+        // Continue to render map and status, but replace message log with examine info
+    }
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(10),      // Map area
             Constraint::Length(3),    // Status bar
-            Constraint::Length(8),    // Message log
+            Constraint::Length(8),    // Message log (or examine info in examine mode)
         ])
         .split(frame.area());
 
@@ -32,8 +117,32 @@ pub fn render(frame: &mut Frame, world: &World, resources: &Resources) {
 }
 
 fn render_map(frame: &mut Frame, area: Rect, world: &World, resources: &Resources) {
-    let map = resources.maps.active_map();
+    // Get map based on current depth
+    let map = if resources.current_depth > 0 {
+        // In dungeon - get from dungeon_levels
+        if let Some(dungeon_map) = resources.dungeon_levels.get(&resources.current_depth) {
+            dungeon_map
+        } else {
+            // Fallback to active map if dungeon level doesn't exist
+            resources.maps.active_map()
+        }
+    } else if let Some(location_id) = resources.current_location {
+        // In settlement - get from settlement_maps
+        if let Some(settlement_map) = resources.settlement_maps.get(&location_id) {
+            settlement_map
+        } else {
+            resources.maps.active_map()
+        }
+    } else {
+        // On surface/wilderness - use active map
+        resources.maps.active_map()
+    };
+
     let active_layer = resources.maps.active;
+
+    // Get lighting conditions
+    let time_of_day = resources.world_time.time_of_day();
+    let weather_modifier = resources.weather.current_weather.visibility_modifier();
 
     // Calculate camera bounds
     let cam_x = resources.camera.x;
@@ -59,10 +168,14 @@ fn render_map(frame: &mut Frame, area: Rect, world: &World, resources: &Resource
 
             if map.visible[idx] {
                 display[screen_y as usize][screen_x as usize] = tile.glyph(true);
-                colors[screen_y as usize][screen_x as usize] = tile.color(true);
+                let base_color = tile.color(true);
+                colors[screen_y as usize][screen_x as usize] = apply_lighting(base_color, time_of_day, weather_modifier);
             } else if map.revealed[idx] {
                 display[screen_y as usize][screen_x as usize] = tile.glyph(false);
-                colors[screen_y as usize][screen_x as usize] = tile.color(false);
+                let base_color = tile.color(false);
+                // Revealed tiles are even darker (only 50% of lighting effect)
+                let revealed_modifier = weather_modifier + (4 - (time_of_day as i32));
+                colors[screen_y as usize][screen_x as usize] = apply_lighting(base_color, time_of_day, revealed_modifier);
             }
         }
     }
@@ -90,10 +203,23 @@ fn render_map(frame: &mut Frame, area: Rect, world: &World, resources: &Resource
 
     renderables.sort_by_key(|(_, _, r)| r.z);
 
-    // Render entities
+    // Render entities with lighting
     for (screen_x, screen_y, rend) in renderables {
         display[screen_y as usize][screen_x as usize] = rend.glyph;
-        colors[screen_y as usize][screen_x as usize] = rend.fg;
+        colors[screen_y as usize][screen_x as usize] = apply_lighting(rend.fg, time_of_day, weather_modifier);
+    }
+
+    // Render examine cursor if in examine mode
+    if resources.in_examine_mode {
+        let (cx, cy) = resources.examine_cursor;
+        let screen_x = cx - cam_x;
+        let screen_y = cy - cam_y;
+
+        // Check if cursor is within screen bounds
+        if screen_x >= 0 && screen_x < view_width && screen_y >= 0 && screen_y < view_height {
+            // Yellow background for cursor position
+            colors[screen_y as usize][screen_x as usize] = Color::Yellow;
+        }
     }
 
     // Convert to text
@@ -107,24 +233,34 @@ fn render_map(frame: &mut Frame, area: Rect, world: &World, resources: &Resource
         lines.push(Line::from(spans));
     }
 
-    // Build title with location info
-    let title = if let Some(loc_id) = resources.current_location {
+    // Build title with location info and depth
+    let title = if resources.current_depth > 0 {
+        // In dungeon
+        format!(" Dungeon - Depth {} [{:?} Layer] ", resources.current_depth, active_layer)
+    } else if let Some(loc_id) = resources.current_location {
+        // In settlement
         if let Some(settlement) = resources.settlements.iter().find(|s| s.id == loc_id) {
             format!(" {} ({}) [{:?} Layer] ", settlement.name, settlement.settlement_type.name(), active_layer)
         } else {
-            format!(" Dungeon Clawler - Floor 1 [{:?} Layer] ", active_layer)
+            format!(" Dungeon Clawler - Surface [{:?} Layer] ", active_layer)
         }
     } else {
-        format!(" Dungeon Clawler - Floor 1 [{:?} Layer] ", active_layer)
+        // On wilderness surface
+        format!(" Dungeon Clawler - Surface [{:?} Layer] ", active_layer)
     };
 
     let paragraph = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title(title));
 
     frame.render_widget(paragraph, area);
+
+    // Render minimap overlay
+    let minimap_config = MinimapConfig::default();
+    let minimap = MinimapRenderer::new(minimap_config);
+    minimap.render(frame, world, resources, area);
 }
 
-fn render_status(frame: &mut Frame, area: Rect, world: &World, _resources: &Resources) {
+fn render_status(frame: &mut Frame, area: Rect, world: &World, resources: &Resources) {
     let mut status_text = String::from("No player found");
 
     for (entity, (stats, pos, _)) in world.query::<(&CombatStats, &Position, &Player)>().iter() {
@@ -143,7 +279,13 @@ fn render_status(frame: &mut Frame, area: Rect, world: &World, _resources: &Reso
             ));
         }
 
-        status_text = format!("Pos: ({}, {}) | {}", pos.x, pos.y, bars);
+        // Add time and weather info
+        let time_str = resources.world_time.time_string();
+        let tod = resources.world_time.time_of_day().name();
+        let weather = resources.weather.current_weather.name();
+
+        status_text = format!("Pos: ({}, {}) | {} | {} | {} | {}",
+            pos.x, pos.y, time_str, tod, weather, bars);
         break;
     }
 

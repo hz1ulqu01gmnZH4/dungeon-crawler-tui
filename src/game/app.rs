@@ -67,6 +67,14 @@ impl App {
     fn run_player_turn(&mut self) {
         systems::movement_system(&mut self.world, &mut self.resources);
         update_camera(&self.world, &mut self.resources);
+
+        // Inventory systems
+        systems::pickup_system(&mut self.world, &mut self.resources);
+        systems::drop_system(&mut self.world, &mut self.resources);
+        systems::use_item_system(&mut self.world, &mut self.resources);
+        systems::equip_system(&mut self.world, &mut self.resources);
+        systems::unequip_system(&mut self.world, &mut self.resources);
+
         systems::melee_combat_system(&mut self.world, &mut self.resources);
         systems::death_system(&mut self.world, &mut self.resources);
         systems::update_fov(&mut self.world, &mut self.resources);
