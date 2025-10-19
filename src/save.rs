@@ -88,8 +88,16 @@ impl SaveGame {
             entities.push(entity_data);
         }
 
+        // Collect dungeon levels from both sources, preferring map_cache
+        let mut dungeon_levels_merged: HashMap<Depth, Map> = resources.world.dungeon_levels.clone();
+
+        // Overlay map_cache dungeons (these take precedence)
+        for (depth, map) in resources.world.map_cache.dungeons() {
+            dungeon_levels_merged.insert(*depth, map.clone());
+        }
+
         // Convert HashMap<Depth, Map> to HashMap<i32, Map> for serialization
-        let dungeon_levels: HashMap<i32, Map> = resources.world.dungeon_levels
+        let dungeon_levels: HashMap<i32, Map> = dungeon_levels_merged
             .iter()
             .map(|(depth, map)| (depth.value(), map.clone()))
             .collect();
@@ -132,6 +140,11 @@ impl SaveGame {
             .map(|(depth_val, map)| (Depth(*depth_val), map.clone()))
             .collect();
         resources.world.current_depth = Depth(self.current_depth);
+
+        // Sync dungeon levels to map_cache
+        for (depth, map) in &resources.world.dungeon_levels {
+            resources.world.map_cache.insert(crate::map::MapId::Dungeon(*depth), map.clone());
+        }
 
         // Restore message log
         resources.ui.log.messages = self.message_log.clone();

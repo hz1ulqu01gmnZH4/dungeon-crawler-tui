@@ -1,4 +1,4 @@
-use crate::map::{MapSet, Map};
+use crate::map::{MapSet, Map, MapCache};
 use crate::world::{Overmap, WorldTime, Settlement, POI, WeatherSystem, Road};
 use crate::domain_types::Depth;
 use crate::ecs::resources::{Camera, GameLog, RunMode, UiMode};
@@ -36,8 +36,9 @@ pub struct WorldResources {
     pub settlements: Vec<Settlement>,
     pub pois: Vec<POI>,
     pub roads: Vec<Road>,
-    pub settlement_maps: HashMap<usize, Map>,
-    pub dungeon_levels: HashMap<Depth, Map>,
+    pub map_cache: MapCache,  // Unified map storage for settlements, dungeons, POIs
+    pub settlement_maps: HashMap<usize, Map>,  // Deprecated: use map_cache
+    pub dungeon_levels: HashMap<Depth, Map>,   // Deprecated: use map_cache
     pub current_depth: Depth,
     pub current_location: Option<usize>,
     pub player_overmap_pos: (i32, i32),
@@ -54,6 +55,7 @@ impl WorldResources {
             settlements: Vec::new(),
             pois: Vec::new(),
             roads: Vec::new(),
+            map_cache: MapCache::new(map_width, map_height),
             settlement_maps: HashMap::new(),
             dungeon_levels: HashMap::new(),
             current_depth: Depth::SURFACE,

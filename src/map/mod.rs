@@ -2,11 +2,13 @@ pub mod tile;
 pub mod generator;
 pub mod fov;
 pub mod chunks;
+pub mod cache;
 
 pub use tile::*;
 pub use generator::*;
 pub use self::fov::*;
 pub use chunks::*;
+pub use cache::*;
 
 use crate::ecs::RealityLayer;
 use serde::{Deserialize, Serialize};
