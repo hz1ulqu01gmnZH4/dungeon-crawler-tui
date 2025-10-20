@@ -25,6 +25,11 @@ pub fn movement_system(world: &mut World, resources: &mut Resources) {
             let mut blocked = false;
             let mut target = None;
             for (other_entity, (other_pos, _)) in world.query::<(&Position, &BlocksMovement)>().iter() {
+                // Skip the moving entity itself to prevent self-collision
+                if other_entity == *entity {
+                    continue;
+                }
+
                 if other_pos.x == *dest_x && other_pos.y == *dest_y && other_pos.layer == pos.layer {
                     blocked = true;
                     target = Some(other_entity);
@@ -367,5 +372,44 @@ mod tests {
         // Viewshed should be marked dirty
         let viewshed = world.get::<&Viewshed>(entity).unwrap();
         assert!(viewshed.dirty, "Viewshed should be marked dirty after movement");
+    }
+
+    #[test]
+    fn test_movement_to_same_position_no_self_attack() {
+        let mut world = World::new();
+        let mut resources = Resources::new(10, 10, 12345);
+        *resources.world.maps.active_map_mut() = create_test_map();
+
+        // Create entity with BlocksMovement at (5, 5) - like player
+        let entity = world.spawn((
+            Position::new(5, 5, RealityLayer::Normal),
+            BlocksMovement,
+            Viewshed::new(8),
+        ));
+
+        // Try to move to same position (e.g., wait action or duplicate event)
+        resources.events.send(GameEvent::Move {
+            entity,
+            dest_x: 5,
+            dest_y: 5,
+        });
+
+        movement_system(&mut world, &mut resources);
+
+        // Should NOT move (already there)
+        let pos = world.get::<&Position>(entity).unwrap();
+        assert_eq!(pos.x, 5);
+        assert_eq!(pos.y, 5);
+
+        // BUG: Should NOT generate a Melee event attacking itself!
+        let melee_events: Vec<_> = resources.events.iter()
+            .filter_map(|e| match e {
+                GameEvent::Melee { attacker, target } => Some((*attacker, *target)),
+                _ => None,
+            })
+            .collect();
+
+        // This will FAIL with current code - entity attacks itself
+        assert_eq!(melee_events.len(), 0, "Entity should not attack itself when trying to move to same position");
     }
 }
