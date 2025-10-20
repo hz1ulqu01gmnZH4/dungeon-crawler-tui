@@ -6,6 +6,9 @@ mod inventory;
 mod equipment;
 mod gameplay;
 
+#[cfg(test)]
+mod tests;
+
 use crate::ecs::{Position, resources::{Resources, RunMode, UiMode}};
 use crate::save::{quick_save, quick_load};
 use crossterm::event::{self, Event, KeyCode};

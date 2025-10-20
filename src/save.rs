@@ -618,4 +618,144 @@ mod tests {
         // With JSON and repetitive game data, we should get at least 30% compression
         assert!(compressed < uncompressed * 70 / 100);
     }
+
+    #[test]
+    fn test_stress_save_load_with_many_entities() {
+        use crate::ecs::{Position, Monster, Renderable, Name, CombatStats, Item, ItemData, RealityLayer};
+
+        let mut world = World::new();
+        let mut resources = Resources::new(80, 50, 12345);
+
+        // Create 200 entities (mix of monsters and items)
+        for i in 0..100 {
+            world.spawn((
+                Monster,
+                Position::new(i % 80, i / 80, RealityLayer::Normal),
+                Renderable {
+                    glyph: 'g',
+                    fg: ratatui::style::Color::Green,
+                    bg: ratatui::style::Color::Reset,
+                    z: 5,
+                },
+                Name(format!("Monster {}", i)),
+                CombatStats::new(10, 3, 1),
+                Viewshed::new(8),
+            ));
+        }
+
+        for i in 0..100 {
+            world.spawn((
+                Item,
+                Position::new((i * 2) % 80, (i * 3) % 50, RealityLayer::Normal),
+                Renderable {
+                    glyph: '!',
+                    fg: ratatui::style::Color::Yellow,
+                    bg: ratatui::style::Color::Reset,
+                    z: 1,
+                },
+                Name(format!("Item {}", i)),
+                ItemData::new(format!("Item {}", i), "A test item", 1, 10),
+            ));
+        }
+
+        // Add many log messages
+        for i in 0..100 {
+            resources.ui.log.add(format!("Log message number {}", i));
+        }
+
+        // Save to file
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+        save_game.save_to_file_compressed("stress_test_save.gz").unwrap();
+
+        // Load and verify
+        let loaded = SaveGame::load_from_file_compressed("stress_test_save.gz").unwrap();
+        assert_eq!(loaded.entities.len(), 200);
+        assert_eq!(loaded.seed, 12345);
+
+        // Restore to new world
+        let mut new_world = World::new();
+        let mut new_resources = Resources::new(80, 50, 99999);
+        loaded.restore_game(&mut new_world, &mut new_resources).unwrap();
+
+        // Verify entity count
+        let entity_count = new_world.iter().count();
+        assert_eq!(entity_count, 200);
+
+        // Verify log messages
+        assert_eq!(new_resources.ui.log.messages.len(), 100);
+
+        // Cleanup
+        let _ = std::fs::remove_file("stress_test_save.gz");
+    }
+
+    #[test]
+    fn test_stress_save_load_with_multiple_dungeons() {
+        use crate::map::Map;
+        use crate::domain_types::Depth;
+
+        let mut world = World::new();
+        let mut resources = Resources::new(80, 50, 12345);
+
+        // Create multiple dungeon levels
+        for i in 1..=10 {
+            let map = Map::new(80, 50);
+            resources.world.dungeon_levels.insert(Depth(i), map.clone());
+            resources.world.map_cache.insert(crate::map::MapId::Dungeon(Depth(i)), map);
+        }
+
+        resources.world.current_depth = Depth(5);
+
+        // Save and load
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+        let mut new_world = World::new();
+        let mut new_resources = Resources::new(80, 50, 99999);
+        save_game.restore_game(&mut new_world, &mut new_resources).unwrap();
+
+        // Verify all dungeons were saved
+        assert_eq!(new_resources.world.dungeon_levels.len(), 10);
+        assert_eq!(new_resources.world.current_depth, Depth(5));
+
+        // Verify dungeons are in cache
+        for i in 1..=10 {
+            assert!(new_resources.world.map_cache.contains(crate::map::MapId::Dungeon(Depth(i))));
+        }
+    }
+
+    #[test]
+    fn test_stress_large_world_compression() {
+        use crate::ecs::{Position, Monster, Renderable, Name, CombatStats, RealityLayer};
+
+        let mut world = World::new();
+        let mut resources = Resources::new(80, 50, 12345);
+
+        // Create a large game state with many entities
+        for i in 0..100 {
+            world.spawn((
+                Monster,
+                Position::new(i % 80, i / 80, RealityLayer::Normal),
+                Renderable {
+                    glyph: 'g',
+                    fg: ratatui::style::Color::Green,
+                    bg: ratatui::style::Color::Reset,
+                    z: 5,
+                },
+                Name(format!("Monster {}", i)),
+                CombatStats::new(10 + (i % 5) as i32, 3, 1),
+                Viewshed::new(8),
+            ));
+        }
+
+        // Add large amount of log data
+        for i in 0..200 {
+            resources.ui.log.add(format!("Turn {} - Various game events occurred", i));
+        }
+
+        let save_game = SaveGame::from_game(&world, &resources, 12345);
+        let uncompressed = save_game.uncompressed_size().unwrap();
+        let compressed = save_game.compressed_size().unwrap();
+
+        // Verify significant compression
+        println!("Large world - Uncompressed: {}, Compressed: {}", uncompressed, compressed);
+        assert!(compressed < uncompressed / 5, "Should achieve at least 5:1 compression ratio");
+    }
 }
