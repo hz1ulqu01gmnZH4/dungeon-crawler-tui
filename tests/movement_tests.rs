@@ -88,7 +88,7 @@ fn test_position_stays_in_bounds() {
 
     // Player should still be in bounds
     let pos = harness.player_position().unwrap();
-    let map = harness.resources.maps.active_map();
+    let map = harness.resources.world.maps.active_map();
     assert!(map.in_bounds(pos.0, pos.1), "Player should stay in map bounds");
 }
 

@@ -12,7 +12,7 @@ fn test_character_screen_flag_initializes_false() {
     use dungeon_clawler_tui::ecs::resources::UiMode;
 
     let resources = Resources::new(80, 50, 12345);
-    assert!(matches!(resources.ui_mode, UiMode::MainMenu { .. }));
+    assert!(matches!(resources.ui.ui_mode, UiMode::MainMenu { .. }));
 }
 
 #[test]

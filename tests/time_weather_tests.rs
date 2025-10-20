@@ -298,18 +298,18 @@ fn test_time_of_day_changes() {
     assert_eq!(harness.current_time().time_of_day(), TimeOfDay::Day);
 
     // Advance to evening
-    harness.resources.world_time.advance_hours(11); // 19:00 = Dusk
+    harness.resources.sim.world_time.advance_hours(11); // 19:00 = Dusk
     assert_eq!(harness.current_time().time_of_day(), TimeOfDay::Dusk);
 
     // Advance to night
-    harness.resources.world_time.advance_hours(2); // 21:00 = Night
+    harness.resources.sim.world_time.advance_hours(2); // 21:00 = Night
     assert_eq!(harness.current_time().time_of_day(), TimeOfDay::Night);
 
     // Advance to deep night
-    harness.resources.world_time.advance_hours(4); // 01:00 = DeepNight
+    harness.resources.sim.world_time.advance_hours(4); // 01:00 = DeepNight
     assert_eq!(harness.current_time().time_of_day(), TimeOfDay::DeepNight);
 
     // Advance to dawn
-    harness.resources.world_time.advance_hours(6); // 07:00 = Dawn
+    harness.resources.sim.world_time.advance_hours(6); // 07:00 = Dawn
     assert_eq!(harness.current_time().time_of_day(), TimeOfDay::Dawn);
 }

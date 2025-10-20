@@ -48,8 +48,8 @@ impl GameTestHarness {
         for y in (player_start_y - room_size / 2)..(player_start_y + room_size / 2) {
             for x in (player_start_x - room_size / 2)..(player_start_x + room_size / 2) {
                 if x > 0 && x < map_width && y > 0 && y < map_height {
-                    let idx = resources.maps.active_map().xy_idx(x, y);
-                    resources.maps.normal.tiles[idx] = map::Tile::Floor;
+                    let idx = resources.world.maps.active_map().xy_idx(x, y);
+                    resources.world.maps.normal.tiles[idx] = map::Tile::Floor;
                 }
             }
         }
@@ -82,7 +82,7 @@ impl GameTestHarness {
         ));
 
         // Store player entity reference for FOV system
-        resources.player_entity = Some(player_entity);
+        resources.player.player_entity = Some(player_entity);
 
         let mut harness = Self {
             world,
@@ -120,7 +120,7 @@ impl GameTestHarness {
     /// Get current player position
     pub fn player_position(&self) -> Option<(i32, i32)> {
         for (_, pos) in self.world.query::<&ecs::Position>().iter() {
-            if pos.layer == self.resources.maps.active {
+            if pos.layer == self.resources.world.maps.active {
                 return Some((pos.x, pos.y));
             }
         }
@@ -137,49 +137,49 @@ impl GameTestHarness {
 
     /// Get current time
     pub fn current_time(&self) -> &world::WorldTime {
-        &self.resources.world_time
+        &self.resources.sim.world_time
     }
 
     /// Get current weather
     pub fn current_weather(&self) -> world::Weather {
-        self.resources.weather.current_weather
+        self.resources.sim.weather.current_weather
     }
 
     /// Check if in overmap mode
     pub fn is_in_overmap_mode(&self) -> bool {
-        matches!(self.resources.ui_mode, ecs::resources::UiMode::Overmap)
+        matches!(self.resources.ui.ui_mode, ecs::resources::UiMode::Overmap)
     }
 
     /// Get player overmap position
     pub fn player_overmap_position(&self) -> (i32, i32) {
-        self.resources.player_overmap_pos
+        self.resources.world.player_overmap_pos
     }
 
     /// Get current location ID (if in a settlement/dungeon)
     pub fn current_location(&self) -> Option<usize> {
-        self.resources.current_location
+        self.resources.world.current_location
     }
 
     /// Get current reality layer
     pub fn current_layer(&self) -> ecs::RealityLayer {
-        self.resources.maps.active
+        self.resources.world.maps.active
     }
 
     /// Count visible tiles in current map
     pub fn count_visible_tiles(&self) -> usize {
-        let map = self.resources.maps.active_map();
+        let map = self.resources.world.maps.active_map();
         map.visible.iter().filter(|&&v| v).count()
     }
 
     /// Count revealed tiles in current map
     pub fn count_revealed_tiles(&self) -> usize {
-        let map = self.resources.maps.active_map();
+        let map = self.resources.world.maps.active_map();
         map.revealed.iter().filter(|&&v| v).count()
     }
 
     /// Count discovered overmap tiles
     pub fn count_discovered_overmap_tiles(&self) -> usize {
-        self.resources.overmap.tiles.iter().filter(|t| t.discovered).count()
+        self.resources.world.overmap.tiles.iter().filter(|t| t.discovered).count()
     }
 
     /// Take a snapshot of current game state
@@ -187,7 +187,7 @@ impl GameTestHarness {
         GameSnapshot {
             player_pos: self.player_position().unwrap_or((0, 0)),
             time: self.current_time().clone(),
-            ui_mode: self.resources.ui_mode.clone(),
+            ui_mode: self.resources.ui.ui_mode.clone(),
             current_location: self.current_location(),
             player_overmap_pos: self.player_overmap_position(),
             active_layer: self.current_layer(),
@@ -201,7 +201,7 @@ impl GameTestHarness {
 
         // Player is in valid location
         let pos = self.player_position().unwrap();
-        let map = self.resources.maps.active_map();
+        let map = self.resources.world.maps.active_map();
         assert!(map.in_bounds(pos.0, pos.1), "Player should be in map bounds");
 
         // Player stats are reasonable
@@ -220,6 +220,7 @@ impl GameTestHarness {
         let player_pos = self.player_overmap_position();
 
         self.resources
+            .world
             .settlements
             .iter()
             .min_by_key(|s| {
@@ -262,26 +263,26 @@ impl GameTestHarness {
 
     /// Get message log
     pub fn get_message_log(&self) -> Vec<String> {
-        self.resources.log.recent(100).to_vec()
+        self.resources.ui.log.recent(100).to_vec()
     }
 
     /// Advance time by a number of days
     pub fn advance_time_by_days(&mut self, days: i32) {
         for _ in 0..days {
-            self.resources.world_time.advance_hours(24);
+            self.resources.sim.world_time.advance_hours(24);
         }
     }
 
     /// Check if currently in a building
     pub fn is_in_building(&self) -> bool {
         // Could check if current map dimensions match building dimensions
-        let map = self.resources.maps.active_map();
+        let map = self.resources.world.maps.active_map();
         map.width <= 20 && map.height <= 20 // Buildings are typically small
     }
 
     /// Damage player to specific HP (for testing rest/healing)
     pub fn damage_player(&mut self, target_hp: i32) {
-        if let Some(player_entity) = self.resources.player_entity {
+        if let Some(player_entity) = self.resources.player.player_entity {
             if let Ok(mut stats) = self.world.get::<&mut ecs::CombatStats>(player_entity) {
                 stats.hp = dungeon_clawler_tui::HitPoints::new(target_hp.min(stats.max_hp.value()).max(0));
             }

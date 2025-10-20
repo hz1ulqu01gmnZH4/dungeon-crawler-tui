@@ -209,7 +209,7 @@ fn test_day_night_gameplay() {
     assert_eq!(harness.current_time().time_of_day(), TimeOfDay::Day);
 
     // Advance to night
-    harness.resources.world_time.advance_hours(14); // 22:00
+    harness.resources.sim.world_time.advance_hours(14); // 22:00
 
     assert_eq!(harness.current_time().time_of_day(), TimeOfDay::Night);
 
@@ -276,7 +276,7 @@ fn test_world_exploration_reveals_roads() {
     harness.tick(1);
 
     // Should have roads
-    let road_count = harness.resources.roads.len();
+    let road_count = harness.resources.world.roads.len();
     assert!(road_count > 0, "World should have roads");
 
     // Explore around (may be blocked by terrain)
@@ -300,12 +300,12 @@ fn test_world_exploration_reveals_pois() {
     harness.tick(1);
 
     // Should have POIs
-    let poi_count = harness.resources.pois.len();
+    let poi_count = harness.resources.world.pois.len();
     assert!(poi_count > 0, "World should have POIs (dungeons, caves, etc.)");
 
     // Verify POI types exist
     use dungeon_clawler_tui::world::POIType;
-    let poi_types: Vec<POIType> = harness.resources.pois
+    let poi_types: Vec<POIType> = harness.resources.world.pois
         .iter()
         .map(|poi| poi.poi_type)
         .collect();

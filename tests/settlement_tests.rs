@@ -85,21 +85,21 @@ fn test_settlement_map_generation() {
     harness.navigate_overmap_to(settlement_pos);
 
     // Get settlement ID
-    let settlement = harness.resources.settlements
+    let settlement = harness.resources.world.settlements
         .iter()
         .find(|s| s.position == settlement_pos)
         .expect("Should find settlement");
     let settlement_id = settlement.id;
 
     // Initially no settlement map generated
-    assert!(!harness.resources.settlement_maps.contains_key(&settlement_id));
+    assert!(!harness.resources.world.settlement_maps.contains_key(&settlement_id));
 
     // Enter settlement (triggers map generation)
     harness.press_key(KeyCode::Enter).ok();
     harness.tick(1);
 
     // Settlement map should now exist
-    assert!(harness.resources.settlement_maps.contains_key(&settlement_id),
+    assert!(harness.resources.world.settlement_maps.contains_key(&settlement_id),
         "Should generate settlement map on first entry");
 }
 
@@ -132,7 +132,7 @@ fn test_settlement_map_persistence() {
         "Re-entering settlement should use same location ID");
 
     // Settlement map should be persisted (not regenerated)
-    assert!(harness.resources.settlement_maps.contains_key(&location_id));
+    assert!(harness.resources.world.settlement_maps.contains_key(&location_id));
 }
 
 #[test]
@@ -151,7 +151,7 @@ fn test_player_spawns_at_settlement_entrance() {
 
     // Get player position in settlement
     let player_pos = harness.player_position().unwrap();
-    let map = harness.resources.maps.active_map();
+    let map = harness.resources.world.maps.active_map();
 
     // Player should be near bottom of map (entrance area)
     assert!(player_pos.1 > map.height / 2,
@@ -204,11 +204,11 @@ fn test_different_settlement_types() {
     // Should have different types of settlements
     use dungeon_clawler_tui::world::SettlementType;
 
-    let has_city = harness.resources.settlements.iter()
+    let has_city = harness.resources.world.settlements.iter()
         .any(|s| s.settlement_type == SettlementType::City);
-    let has_town = harness.resources.settlements.iter()
+    let has_town = harness.resources.world.settlements.iter()
         .any(|s| s.settlement_type == SettlementType::Town);
-    let has_village = harness.resources.settlements.iter()
+    let has_village = harness.resources.world.settlements.iter()
         .any(|s| s.settlement_type == SettlementType::Village);
 
     // Should have at least 2 different types
@@ -230,7 +230,7 @@ fn test_settlement_map_is_traversable() {
     harness.press_key(KeyCode::Enter).ok();
     harness.tick(1);
 
-    let map = harness.resources.maps.active_map();
+    let map = harness.resources.world.maps.active_map();
 
     // Count floor tiles (settlement maps are currently floor-based)
     let floor_count = map.tiles.iter()

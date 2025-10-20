@@ -49,15 +49,15 @@ fn test_overmap_world_generation() {
         "Should discover at least 7x7 starting area. Found: {}", discovered);
 
     // Should have settlements
-    assert!(!harness.resources.settlements.is_empty(),
+    assert!(!harness.resources.world.settlements.is_empty(),
         "World should have settlements");
 
     // Should have roads
-    assert!(!harness.resources.roads.is_empty(),
+    assert!(!harness.resources.world.roads.is_empty(),
         "World should have road network");
 
     // Should have POIs
-    assert!(!harness.resources.pois.is_empty(),
+    assert!(!harness.resources.world.pois.is_empty(),
         "World should have points of interest");
 }
 
@@ -122,7 +122,7 @@ fn test_find_settlement() {
     harness.tick(1);
 
     // Should have settlements
-    assert!(!harness.resources.settlements.is_empty());
+    assert!(!harness.resources.world.settlements.is_empty());
 
     // Find nearest settlement
     let settlement_pos = harness.find_nearest_settlement();
@@ -131,7 +131,7 @@ fn test_find_settlement() {
     assert!(settlement_pos.0 >= 0 && settlement_pos.1 >= 0);
 
     // There should be a settlement at that position
-    let settlement_exists = harness.resources.settlements
+    let settlement_exists = harness.resources.world.settlements
         .iter()
         .any(|s| s.position == settlement_pos);
     assert!(settlement_exists, "Should find a settlement at calculated position");
@@ -205,7 +205,7 @@ fn test_overmap_tile_discovery_radius() {
             let check_x = player_pos.0 + dx;
             let check_y = player_pos.1 + dy;
 
-            if let Some(tile) = harness.resources.overmap.get_tile(check_x, check_y) {
+            if let Some(tile) = harness.resources.world.overmap.get_tile(check_x, check_y) {
                 if tile.discovered {
                     discovered_count += 1;
                 }
@@ -233,24 +233,24 @@ fn test_overmap_deterministic_generation() {
     harness2.tick(1);
 
     // Should have same number of settlements
-    assert_eq!(harness1.resources.settlements.len(),
-               harness2.resources.settlements.len(),
+    assert_eq!(harness1.resources.world.settlements.len(),
+               harness2.resources.world.settlements.len(),
                "Same seed should generate same number of settlements");
 
     // Should have same number of roads
-    assert_eq!(harness1.resources.roads.len(),
-               harness2.resources.roads.len(),
+    assert_eq!(harness1.resources.world.roads.len(),
+               harness2.resources.world.roads.len(),
                "Same seed should generate same road network");
 
     // Should have same number of POIs
-    assert_eq!(harness1.resources.pois.len(),
-               harness2.resources.pois.len(),
+    assert_eq!(harness1.resources.world.pois.len(),
+               harness2.resources.world.pois.len(),
                "Same seed should generate same POIs");
 
     // First settlement should be at same position with same name
-    if !harness1.resources.settlements.is_empty() {
-        let s1 = &harness1.resources.settlements[0];
-        let s2 = &harness2.resources.settlements[0];
+    if !harness1.resources.world.settlements.is_empty() {
+        let s1 = &harness1.resources.world.settlements[0];
+        let s2 = &harness2.resources.world.settlements[0];
 
         assert_eq!(s1.position, s2.position, "Settlement positions should match");
         assert_eq!(s1.name, s2.name, "Settlement names should match");
