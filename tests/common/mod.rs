@@ -84,6 +84,9 @@ impl GameTestHarness {
         // Store player entity reference for FOV system
         resources.player.player_entity = Some(player_entity);
 
+        // Set UI mode to InGame for integration tests (skip main menu)
+        resources.ui.ui_mode = ecs::resources::UiMode::InGame;
+
         let mut harness = Self {
             world,
             resources,
@@ -327,7 +330,8 @@ mod harness_tests {
         let snapshot = harness.snapshot();
 
         assert_eq!(snapshot.player_pos, harness.player_position().unwrap());
-        assert!(matches!(snapshot.ui_mode, ecs::resources::UiMode::MainMenu { .. }));
+        // Test harness now starts in InGame mode for integration testing
+        assert!(matches!(snapshot.ui_mode, ecs::resources::UiMode::InGame));
     }
 
     #[test]
