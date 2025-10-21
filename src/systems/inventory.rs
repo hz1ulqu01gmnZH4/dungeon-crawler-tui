@@ -810,4 +810,43 @@ mod tests {
             assert!(stack_qty >= 1, "Stack should have at least 1 item");
         }
     }
+
+    #[test]
+    fn test_cannot_pickup_same_item_twice() {
+        let mut world = World::new();
+        let mut resources = Resources::new(80, 50, 12345);
+
+        let player = create_test_player(&mut world);
+        let item = create_test_item(&mut world, Position::new(5, 5, RealityLayer::Normal));
+
+        resources.player.player_entity = Some(player);
+
+        // First pickup
+        resources.events.send(GameEvent::PickupItem { entity: player, item });
+        pickup_system(&mut world, &mut resources);
+
+        // Item should be in inventory
+        {
+            let inv = world.get::<&Inventory>(player).unwrap();
+            assert!(inv.items.contains(&item), "Item should be in inventory after first pickup");
+        }
+
+        // OnGround should be removed
+        assert!(world.get::<&OnGround>(item).is_err(), "OnGround marker should be removed");
+
+        // Clear events (simulating end of turn)
+        resources.events.clear();
+
+        // Try to pick up the same item again (simulating pressing 'g' again)
+        // This should either fail or not add the item again
+        resources.events.send(GameEvent::PickupItem { entity: player, item });
+        pickup_system(&mut world, &mut resources);
+
+        // Should still only have 1 item in inventory
+        {
+            let inv = world.get::<&Inventory>(player).unwrap();
+            let count = inv.items.iter().filter(|&&i| i == item).count();
+            assert_eq!(count, 1, "Should only have 1 copy of the item, not duplicates");
+        }
+    }
 }

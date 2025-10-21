@@ -350,6 +350,11 @@ impl Inventory {
     }
 
     pub fn add_item(&mut self, item: hecs::Entity) -> Result<(), &'static str> {
+        // Check if item is already in inventory (prevent duplicates)
+        if self.items.contains(&item) {
+            return Err("Item is already in inventory!");
+        }
+
         if self.items.len() >= self.capacity {
             return Err("Inventory is full!");
         }
