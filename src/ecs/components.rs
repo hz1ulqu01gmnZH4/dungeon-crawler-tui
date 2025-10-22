@@ -556,21 +556,22 @@ mod tests {
         let uid2 = Uid::new();
         let uid3 = Uid::new();
 
-        assert_eq!(uid1.0, 1);
-        assert_eq!(uid2.0, 2);
-        assert_eq!(uid3.0, 3);
+        // Check relative ordering (not absolute values due to parallel test execution)
+        assert_eq!(uid2.0, uid1.0 + 1);
+        assert_eq!(uid3.0, uid2.0 + 1);
         assert_ne!(uid1, uid2);
     }
 
     #[test]
     fn test_uid_from_raw() {
-        Uid::reset_counter();
-        let uid1 = Uid::from_raw(100);
-        assert_eq!(uid1.0, 100);
+        // Use a high value to avoid conflicts with other tests
+        let test_value = 1000000;
+        let uid1 = Uid::from_raw(test_value);
+        assert_eq!(uid1.0, test_value);
 
-        // Next UID should be 101 or higher
+        // from_raw should update counter so next UID is at least value+1
         let uid2 = Uid::new();
-        assert!(uid2.0 >= 101);
+        assert!(uid2.0 > test_value, "Expected uid2 ({}) to be > test_value ({})", uid2.0, test_value);
     }
 
     #[test]
