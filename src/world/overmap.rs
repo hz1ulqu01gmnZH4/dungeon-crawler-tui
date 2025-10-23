@@ -1,4 +1,5 @@
 use super::terrain::TerrainType;
+use super::biome::BiomeId;
 use serde::{Deserialize, Serialize};
 
 /// Unique identifier for locations (settlements, dungeons, etc.)
@@ -13,6 +14,14 @@ pub struct OvermapTile {
 
     /// Base terrain type
     pub terrain: TerrainType,
+
+    /// Biome type for this tile
+    pub biome: BiomeId,
+
+    /// Biome strength/confidence (0.0-1.0)
+    /// Higher values mean the biome is more established here
+    /// Used for smooth biome transitions
+    pub biome_strength: f32,
 
     /// Has the player discovered this tile?
     pub discovered: bool,
@@ -33,6 +42,23 @@ impl OvermapTile {
             x,
             y,
             terrain,
+            biome: BiomeId::Plains,  // Default to plains
+            biome_strength: 1.0,      // Full strength by default
+            discovered: false,
+            visited: false,
+            corruption: 0,
+            location: None,
+        }
+    }
+
+    /// Create a tile with a specific biome
+    pub fn with_biome(x: i32, y: i32, terrain: TerrainType, biome: BiomeId, strength: f32) -> Self {
+        Self {
+            x,
+            y,
+            terrain,
+            biome,
+            biome_strength: strength.clamp(0.0, 1.0),
             discovered: false,
             visited: false,
             corruption: 0,

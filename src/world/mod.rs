@@ -1,5 +1,9 @@
 pub mod overmap;
 pub mod terrain;
+pub mod biome;
+pub mod region_settings;
+pub mod biome_generator;
+pub mod hydrology;
 pub mod generator;
 pub mod time;
 pub mod settlement;
@@ -13,6 +17,10 @@ pub mod building;
 
 pub use overmap::*;
 pub use terrain::*;
+pub use biome::*;
+pub use region_settings::*;
+pub use biome_generator::*;
+pub use hydrology::*;
 pub use generator::*;
 pub use time::*;
 pub use settlement::*;

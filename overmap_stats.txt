@@ -1,0 +1,27 @@
+OVERMAP STATISTICS
+===================
+
+Dimensions: 50x50
+Total tiles: 2500
+
+BIOME DISTRIBUTION:
+  DeepWilderness: 1392 tiles (55.7%)
+  Forest: 277 tiles (11.1%)
+  Plains: 245 tiles (9.8%)
+  Hills: 218 tiles (8.7%)
+  Mountains: 186 tiles (7.4%)
+  Wetlands: 182 tiles (7.3%)
+
+TERRAIN DISTRIBUTION:
+  DenseForest: 1418 tiles (56.7%)
+  Forest: 507 tiles (20.3%)
+  Plains: 196 tiles (7.8%)
+  River: 136 tiles (5.4%)
+  Mountains: 81 tiles (3.2%)
+  Hills: 80 tiles (3.2%)
+  Swamp: 67 tiles (2.7%)
+  Lake: 15 tiles (0.6%)
+
+SETTLEMENTS:
+
+ROADS: 0 segments

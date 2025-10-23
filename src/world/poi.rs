@@ -3,7 +3,7 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Point of Interest types
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum POIType {
     Dungeon,        // Standard dungeon entrance
     Cave,           // Natural cave system
